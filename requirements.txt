@@ -1,6 +1,7 @@
 certifi==2021.10.8
 charset-normalizer==2.0.12
 click==8.0.4
+dnspython==2.2.1
 Flask==2.0.3
 gunicorn==20.1.0
 idna==3.3
@@ -11,12 +12,14 @@ MarkupSafe==2.1.1
 multitasking==0.0.10
 numpy==1.22.3
 pandas==1.4.1
+pandas-datareader==0.10.0
 pymongo==4.0.2
 python-dateutil==2.8.2
 python-dotenv==0.20.0
 pytz==2022.1
 requests==2.27.1
 six==1.16.0
+timedelta==2020.12.3
 urllib3==1.26.9
 Werkzeug==2.0.3
 yfinance==0.1.70
