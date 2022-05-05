@@ -1,14 +1,7 @@
-import sys, os
-import re
-import csv
-import json
-from datetime import datetime, date, time, timedelta
-import numpy as np
+from datetime import datetime, date, timedelta
 import pytz
 import yfinance as yf
-import ast
 from pymongo import *
-from pandas_datareader import data as pdr
 
 
 class mongoYfinance:
