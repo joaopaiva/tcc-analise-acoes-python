@@ -160,7 +160,8 @@ class mongoYfinance:
         for symbol in symbols:
             # download dataframe
             quote = yf.Ticker(symbol['sym'])
-            data = quote.history(start=startDate.replace("/", "-"), end=endDate.replace("/", "-"), interval=interval)
+            # data = quote.history(start=startDate.replace("/", "-"), end=endDate.replace("/", "-"), interval=interval)
+            data = quote.history(start=startDate.replace("/", "-"), interval=interval)
 
             # set index to column in pandas DataFrame
             data.reset_index(inplace=True)
