@@ -1,5 +1,8 @@
 from flask import Flask, request, render_template, jsonify
+import yfinance as yf
 from mongoYfinance import *
+import pandas as pd
+import sys
 
 # instantiate the Flask app.
 app = Flask(__name__)
