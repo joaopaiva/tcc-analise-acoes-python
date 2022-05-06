@@ -370,7 +370,7 @@ Site.prototype.RenderChart = function(data, quote){
 
 	    this.chart = Highcharts.stockChart('chart_container', {
 		    time: {
-                timezone: 'Etc/GMT'
+                timezone: 'Etc/GMT-1'
             },
             yAxis: [{
                 labels: {
