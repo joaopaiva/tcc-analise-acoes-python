@@ -1,13 +1,92 @@
 var Site = function(){
-	this.symbol = "PETR4.SA";
+//	this.symbol = "PETR4.SA";
 };
 
 Site.prototype.Init = function(){
-	this.GetQuote();
-	$("#symbol").on("click", function(){
-		$(this).val("");
+    // store the site context.
+	var that = this;
+
+	that.LoadStoredSymbols(true);
+	jQuery("#symbol").on("click", function(){
+		jQuery(this).val("");
 	});
+
+	jQuery('#modalAlertRemoveSymbol').on('show.bs.modal', function (event) {
+        var button = jQuery(event.relatedTarget); // Button that triggered the modal
+        var symbol = button.data('id'); // Extract info from data-* attributes
+        var shortName = button.data('shortname'); // Extract info from data-* attributes
+        // If necessary, you could initiate an AJAX request here (and then do the updating in a callback).
+        // Update the modal's content. We'll use jQuery here, but you could use a data binding library or other methods instead.
+        var modal = jQuery(this);
+        modal.find('.btn-remove').attr('data-id', symbol);
+        modal.find('.modal-body .symbolName').html(' ' + shortName);
+    });
+
+    jQuery('.btn-remove').on("click", function(){
+        that.RemoveSymbol(jQuery(this).attr("data-id"));
+        jQuery('#modalAlertRemoveSymbol').modal('hide');
+    });
 };
+
+Site.prototype.LoadStoredSymbols = function (reloadChart = false) {
+
+	// store the site context.
+	var that = this;
+
+	// pull the HTTP REquest
+	$.ajax({
+		url: "/list",
+		method: "GET",
+		cache: false
+	}).done(function(data) {
+
+        var data = JSON.parse(data);
+		if(Object.keys(data).length > 0)
+        {
+            var symbolList = "";
+
+            for (var i = 0, l = Object.keys(data).length; i < l; i++) {
+                symbolList += '<li><span class="getSymbol" onclick="site.getSymbolChart(this)" data-id="' + data[i].sym + '">' + data[i].shortName + '</span><span data-toggle="modal" data-id="' + data[i].sym + '" data-shortname="' + data[i].shortName + '" data-target="#modalAlertRemoveSymbol" class="removeItem">x</span></li>';
+            }
+
+            jQuery( "ul.symbolList" ).html(symbolList);
+
+            var context = {};
+
+            context.shortName = data[0].shortName;
+            context.symbol = data[0].sym;
+            that.symbol = data[0].sym;
+
+            // call the request to load the chart and pass the data context with it.
+            if(reloadChart)
+                that.LoadChart(context);
+		}
+	});
+}
+
+Site.prototype.RemoveSymbol = function (symbolId) {
+
+	// store the site context.
+	var that = this;
+
+	// pull the HTTP REquest
+	$.ajax({
+		url: "/remove?symbol=" + symbolId,
+		method: "GET",
+		cache: false
+	}).done(function(data) {
+//            jQuery( "ul.symbolList" ).html(symbolList);
+
+            var context = {};
+
+            context.removed = data.removed;
+            context.message = data.message;
+
+            // call the request to a message with result
+//            that.ShowMessage(context);
+            that.LoadStoredSymbols(true);
+	});
+}
 
 Site.prototype.exponentialMovingAverage = function (data, sma, window = 5, last = false) {
 
@@ -92,35 +171,89 @@ Site.prototype.checkLineIntersection = function (a1, a2) {
   return false;
 }
 
-Site.prototype.GetQuote = function(){
+//Site.prototype.GetQuote = function(symbol = this.symbol){
+//	// store the site context.
+//    //	var that = this;
+//
+//	// pull the HTTP REquest
+//	$.ajax({
+//		url: "/quote?symbol=" + symbol,
+//		method: "GET",
+//		cache: false
+//	}).done(function(data) {
+//
+//		// set up a data context for just what we need.
+//		var context = {};
+//		context.shortName = data.shortName;
+//		context.symbol = data.sym;
+////		context.price = data.ask;
+//
+////		if(data.quoteType="MUTUALFUND"){
+////			context.price = data.previousClose
+////		}
+//
+//		// call the request to load the chart and pass the data context with it.
+//		that.LoadChart(context);
+//	});
+//};
+Site.prototype.GetQuote = function(symbol = this.symbol){
 	// store the site context.
-	var that = this;
+    var that = this;
 
 	// pull the HTTP REquest
 	$.ajax({
-		url: "/quote?symbol=" + that.symbol,
+		url: "/get?symbol=" + symbol,
 		method: "GET",
 		cache: false
 	}).done(function(data) {
 
-		// set up a data context for just what we need.
-		var context = {};
-		context.shortName = data.shortName;
-		context.symbol = data.symbol;
-		context.price = data.ask;
+        var data = JSON.parse(data);
+		if(Object.keys(data).length > 0)
+        {
+//            var symbolList = "";
 
-		if(data.quoteType="MUTUALFUND"){
-			context.price = data.previousClose
+//            for (var i = 0, l = Object.keys(data).length; i < l; i++) {
+//                symbolList += '<li>' + data[i].shortName + '<span data-toggle="modal" data-id="' + data[i].sym + '" data-shortname="' + data[i].shortName + '" data-target="#modalAlertRemoveSymbol" class="removeItem">x</span></li>';
+//            }
+
+//            jQuery( "ul.symbolList" ).html(symbolList);
+
+            var context = {};
+
+            context.shortName = data.shortName;
+            context.symbol = data.sym;
+            that.symbol = data.sym;
+
+            // call the request to load the chart and pass the data context with it.
+            that.LoadChart(context);
+//            jQuery( ".symbolListDiv" ).show();
 		}
-
-		// call the request to load the chart and pass the data context with it.
-		that.LoadChart(context);
+//		// set up a data context for just what we need.
+//		var context = {};
+//		context.shortName = data.shortName;
+//		context.symbol = data.sym;
+////		context.price = data.ask;
+//
+////		if(data.quoteType="MUTUALFUND"){
+////			context.price = data.previousClose
+////		}
+//
+//		// call the request to load the chart and pass the data context with it.
+//		that.LoadChart(context);
 	});
 };
 
 Site.prototype.SubmitForm = function(){
 	this.symbol = $("#symbol").val();
 	this.GetQuote();
+}
+
+Site.prototype.getSymbolChart = function (e){
+        symbol = jQuery(e).attr("data-id");
+        jQuery(".symbolListDiv .loadingChart").addClass("d-inline-block");
+        console.log(symbol);
+        this.symbol = symbol;
+        this.GetQuote(symbol);
 }
 
 Site.prototype.LoadChart = function(quote){
@@ -198,6 +331,7 @@ Site.prototype.LoadChart = function(quote){
         });
 
         console.log(series = that.chart.series)
+        that.LoadStoredSymbols(false);
 //        console.log(simpleMovingAverageArray50);
 	});
 };
@@ -206,7 +340,9 @@ Site.prototype.RenderChart = function(data, quote){
         var priceData = [];
         var volumeData = [];
 
-        var title = quote.shortName  + " (" + quote.symbol + ") - " + numeral(quote.price).format('$0,0.00');
+        var title = quote.shortName  + " (" + quote.symbol + ")";
+
+        jQuery("h4.currentSymbolName").text(title);
 
 
         // Close and Volume data
@@ -229,7 +365,9 @@ Site.prototype.RenderChart = function(data, quote){
 	    console.log(volumeData);
 
 	    this.chart = Highcharts.stockChart('chart_container', {
-		
+//		    time: {
+//                timezone: 'Etc/GMT+7'
+//            },
             yAxis: [{
                 labels: {
                     align: 'left'
@@ -257,10 +395,10 @@ Site.prototype.RenderChart = function(data, quote){
             credits: {
                 enabled: false
             },
-
-            title: {
-                text: title
-            },
+//
+//            title: {
+//                text: title
+//            },
 
             series: [{
                 name: quote.shortName,
@@ -289,19 +427,19 @@ Site.prototype.RenderChart = function(data, quote){
 
             rangeSelector: {
                 buttons: [{
-//                    type: 'minute',
-//                    count: 15,
-//                    text: '15m'
-//                },{
-//                    type: 'minute',
-//                    count: 30,
-//                    text: '30m'
-//                },{
-//                    type: 'hour',
-//                    count: 1,
-//                    text: '1h'
-//                },
-//                {
+                    type: 'minute',
+                    count: 15,
+                    text: '15m'
+                },{
+                    type: 'minute',
+                    count: 30,
+                    text: '30m'
+                },{
+                    type: 'hour',
+                    count: 1,
+                    text: '1h'
+                },
+                {
                     type: 'hour',
                     count: 3,
                     text: '3h'
@@ -334,26 +472,28 @@ Site.prototype.RenderChart = function(data, quote){
                 inputEnabled: false
             },
 
-//            responsive: {
-//                rules: [{
-//                    condition: {
-//                        maxWidth: 800
-//                    },
-//                    chartOptions: {
-//                        rangeSelector: {
-//                            inputEnabled: false
-//                        }
-//                    }
-//                }]
-//            }
+            responsive: {
+                rules: [{
+                    condition: {
+                        maxWidth: 800
+                    },
+                    chartOptions: {
+                        rangeSelector: {
+                            inputEnabled: false
+                        }
+                    }
+                }]
+            }
 
         });
 
+        jQuery( ".symbolListDiv" ).show();
+        jQuery(".symbolListDiv .loadingChart").removeClass('d-inline-block');
+        jQuery( "#navbarToggleExternalContent" ).collapse('hide');
 };
 
 var site = new Site();
 
-$(document).ready(()=>{
+jQuery(document).ready(()=>{
 	site.Init();
-//	site.GetQuote();
 })

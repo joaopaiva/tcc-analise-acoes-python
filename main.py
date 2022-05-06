@@ -16,14 +16,13 @@ def display_quote():
     # default to AAPL
     symbol = request.args.get('symbol', default="AAPL")
 
-    # pull the stock quote
-    quote = yf.Ticker(symbol)
+    # use the quote to pull the historical data from Yahoo finance stored in MongoDB
+    hist = yfdb.add(symbol)
+    # convert the historical data to JSON
+    data = json.dumps(hist)
 
-    # pprint(vars(quote))
-    # app.logger.info(vars(quote))
-
-    # return the object via the HTTP Response
-    return jsonify(quote.info)
+    # return the JSON in the HTTP response
+    return data
 
 
 # API route for pulling the stock history
@@ -44,6 +43,7 @@ def display_history():
     # return the JSON in the HTTP response
     return data
 
+
 # API route for pulling the stock history
 @app.route("/historydb")
 def display_history_db():
@@ -55,6 +55,50 @@ def display_history_db():
     # use the quote to pull the historical data from Yahoo finance stored in MongoDB
     hist = yfdb.getTicker(symbol)
     # convert the historical data to JSON
+    data = json.dumps(hist)
+
+    # return the JSON in the HTTP response
+    return data
+
+
+# API route for remove symbol
+@app.route("/list")
+def list_symbol_db():
+    # get listed symbols stored in MongoDB
+    hist = yfdb.listSymbols()
+    # convert the return data to JSON
+    data = json.dumps(hist)
+
+    # return the JSON in the HTTP response
+    return data
+
+
+# API route for add symbol
+@app.route("/get")
+def get_symbol_db():
+    # get the query string parameters
+    symbol = request.args.get('symbol')
+
+    # get return data
+    result = yfdb.add(symbol)
+    # convert the return data to JSON
+    data = json.dumps(result)
+
+    # return the JSON in the HTTP response
+    return data
+
+
+# API route for pulling the stock history
+@app.route("/remove")
+def remove_symbol_db():
+    # get the query string parameters
+    symbol = request.args.get('symbol')
+    # period = request.args.get('period', default="7d")
+    # interval = request.args.get('interval', default="1m")
+
+    # use the quote to pull the historical data from Yahoo finance stored in MongoDB
+    hist = yfdb.remove(symbol)
+    # convert the return data to JSON
     data = json.dumps(hist)
 
     # return the JSON in the HTTP response

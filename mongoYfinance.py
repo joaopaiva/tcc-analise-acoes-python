@@ -7,6 +7,8 @@ import numpy as np
 import pytz
 import yfinance as yf
 import ast
+
+from flask import jsonify
 from pymongo import *
 from pandas_datareader import data as pdr
 
@@ -80,28 +82,48 @@ class mongoYfinance:
 
 
     def add(self, symbol, startDate=None, endDate=None):
+
         exists = self.yfdb.symbols.count_documents({'sym': symbol})
+
         if not exists:
-            self.yfdb.symbols.insert_one({'sym': symbol});
+            quote = yf.Ticker(symbol)
+
+            if "shortName" not in quote.info:
+                return {'symbolExists': False, 'added': False, 'message': 'Symbol ' + symbol + ' not found in API'}
+
+            self.yfdb.symbols.insert_one({'sym': symbol, 'shortName': quote.info['shortName']})
             self.sprint("'" + symbol + "'" + " added to the database")
+
+            result = {'symbolExists': True, 'added': True, 'message': 'Symbol ' + symbol + ' was successfully added', 'sym': symbol, 'shortName': quote.info['shortName']}
+        else:
+            symbols = self.yfdb.symbols.find({'sym': symbol})
+            for s in symbols:
+                result = {'symbolExists': True, 'added': False, 'message': 'Symbol ' + symbol + ' is already in database',
+                          'sym': symbol, 'shortName': s['shortName']}
+
         if startDate != None:
             if endDate != None:
                 self.fetchInterval(startDate, endDate, symbol)
             else:
                 self.fetch(startDate, symbol)
 
+        return result
 
     #
     # Removes a symbol from the ddbb, including all timeline entries
     #
     def remove(self, value):
-        exists = self.yfdb.symbols.find({'sym': value}).count();
+        if not value:
+            return {'removed': False, 'message': 'Missing symbol name'}
+        exists = self.yfdb.symbols.count_documents({'sym': value});
         if not exists:
             self.sprint("Error: symbol'" + value + "' not in the database")
+            return {'removed': False, 'message': 'Symbol ' + value + ' not found in database'}
         else:
             self.yfdb.symbols.delete_many({'sym': value});
-            self.yfdb.timeline.delete_many({'sym': value});
+            self.yfdb.timeline.delete_many({'ticker': value});
             self.sprint("'" + value + "'" + " removed from the database")
+            return {'removed': True, 'message': value + ' removed from the database'}
 
 
     #
@@ -124,6 +146,19 @@ class mongoYfinance:
             print("Most recent record: " + max(dates).strftime("%Y/%m/%d"))
 
 
+    def listSymbols(self):
+        symbols = self.yfdb.symbols.find()
+        symList = {}
+        count = 0
+
+        for s in symbols:
+            print(s)
+            symList[count] = {'sym': s['sym'], 'shortName': s['shortName']}
+            count += 1
+
+        return symList
+
+
     #
     # Updates the database fetching data for all symbols since last
     # date in the data until today
@@ -141,7 +176,7 @@ class mongoYfinance:
                                        date.today().strftime("%Y/%m/%d"),
                                        symbol=ticker["sym"])
             else:
-                oldestDate = datetime.today() - timedelta(days=7)
+                oldestDate = datetime.today() - timedelta(days=6)
                 self.fetchInterval(oldestDate.strftime("%Y/%m/%d"),
                                    date.today().strftime("%Y/%m/%d"),
                                    symbol=ticker["sym"])
