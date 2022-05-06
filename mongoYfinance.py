@@ -3,10 +3,12 @@ import re
 import csv
 import json
 from datetime import datetime, date, time, timedelta
+from itertools import zip_longest
 import numpy as np
 import pytz
 import yfinance as yf
 import ast
+import copy
 
 from flask import jsonify
 from pymongo import *
@@ -50,7 +52,7 @@ class mongoYfinance:
         try:
             # print(symbol['Datetime'])
             # return datetime.date(symbol['Datetime'], "%Y-%m-%d")
-            return symbol['Datetime']
+            return symbol['_id']['Datetime']
         except ValueError:
             self.sprint("Error: invalid provided date format (expected yyyy/mm/dd)")
 
@@ -83,7 +85,7 @@ class mongoYfinance:
 
     def add(self, symbol, startDate=None, endDate=None):
 
-        exists = self.yfdb.symbols.count_documents({'sym': symbol})
+        exists = self.yfdb.symbols.count_documents({'_id.sym': symbol})
 
         if not exists:
             quote = yf.Ticker(symbol)
@@ -91,12 +93,16 @@ class mongoYfinance:
             if "shortName" not in quote.info:
                 return {'symbolExists': False, 'added': False, 'message': 'Symbol ' + symbol + ' not found in API'}
 
-            self.yfdb.symbols.insert_one({'sym': symbol, 'shortName': quote.info['shortName']})
+            self.yfdb.symbols.replace_one({'_id': {'sym': symbol}}, {'_id': {'sym': symbol}, 'shortName': quote.info['shortName']}, upsert=True)
             self.sprint("'" + symbol + "'" + " added to the database")
+            oldestDate = datetime.today() - timedelta(days=6)
+            self.fetchInterval(oldestDate.strftime("%Y/%m/%d"),
+                               date.today().strftime("%Y/%m/%d"),
+                               symbol=symbol)
 
             result = {'symbolExists': True, 'added': True, 'message': 'Symbol ' + symbol + ' was successfully added', 'sym': symbol, 'shortName': quote.info['shortName']}
         else:
-            symbols = self.yfdb.symbols.find({'sym': symbol})
+            symbols = self.yfdb.symbols.find({'_id.sym': symbol})
             for s in symbols:
                 result = {'symbolExists': True, 'added': False, 'message': 'Symbol ' + symbol + ' is already in database',
                           'sym': symbol, 'shortName': s['shortName']}
@@ -112,18 +118,18 @@ class mongoYfinance:
     #
     # Removes a symbol from the ddbb, including all timeline entries
     #
-    def remove(self, value):
-        if not value:
+    def remove(self, symbol):
+        if not symbol:
             return {'removed': False, 'message': 'Missing symbol name'}
-        exists = self.yfdb.symbols.count_documents({'sym': value});
+        exists = self.yfdb.symbols.count_documents({'_id.sym': symbol})
         if not exists:
-            self.sprint("Error: symbol'" + value + "' not in the database")
-            return {'removed': False, 'message': 'Symbol ' + value + ' not found in database'}
+            self.sprint("Error: symbol'" + symbol + "' not in the database")
+            return {'removed': False, 'message': 'Symbol ' + symbol + ' not found in database'}
         else:
-            self.yfdb.symbols.delete_many({'sym': value});
-            self.yfdb.timeline.delete_many({'ticker': value});
-            self.sprint("'" + value + "'" + " removed from the database")
-            return {'removed': True, 'message': value + ' removed from the database'}
+            self.yfdb.symbols.delete_many({'_id.sym': symbol})
+            self.yfdb.timeline.delete_many({'_id.sym': symbol})
+            self.sprint("'" + symbol + "'" + " removed from the database")
+            return {'removed': True, 'message': symbol + ' removed from the database'}
 
 
     #
@@ -153,7 +159,7 @@ class mongoYfinance:
 
         for s in symbols:
             print(s)
-            symList[count] = {'sym': s['sym'], 'shortName': s['shortName']}
+            symList[count] = {'sym': s['_id']['sym'], 'shortName': s['shortName']}
             count += 1
 
         return symList
@@ -166,7 +172,7 @@ class mongoYfinance:
     def update(self):
         tickers = self.yfdb.symbols.find()
         for ticker in tickers:
-            tickerTimeline = list(self.yfdb.timeline.find({'ticker': ticker["sym"]}))
+            tickerTimeline = list(self.yfdb.timeline.find({'_id.sym': ticker["_id"]["sym"]}))
             if len(tickerTimeline) > 0:
                 # print(tickerTimeline)
                 oldestDate = max(map(lambda s: self.__getFormattedDate(s), tickerTimeline))
@@ -174,13 +180,12 @@ class mongoYfinance:
                 if oldestDate is not None:
                     self.fetchInterval(oldestDate.strftime("%Y/%m/%d"),
                                        date.today().strftime("%Y/%m/%d"),
-                                       symbol=ticker["sym"])
+                                       symbol=ticker["_id"]["sym"])
             else:
                 oldestDate = datetime.today() - timedelta(days=6)
                 self.fetchInterval(oldestDate.strftime("%Y/%m/%d"),
                                    date.today().strftime("%Y/%m/%d"),
-                                   symbol=ticker["sym"])
-
+                                   symbol=ticker["_id"]["sym"])
 
     # Fetches symbol data for the interval between startDate and endDate
     # If the symbol is set None, all symbols found in the database are
@@ -191,10 +196,10 @@ class mongoYfinance:
         if symbol is None:
             symbols = self.yfdb.symbols.find()
         else:
-            symbols = self.yfdb.symbols.find({'sym': symbol})
+            symbols = self.yfdb.symbols.find(({'_id.sym': symbol}))
         for symbol in symbols:
             # download dataframe
-            quote = yf.Ticker(symbol['sym'])
+            quote = yf.Ticker(symbol['_id']['sym'])
             # data = quote.history(start=startDate.replace("/", "-"), end=endDate.replace("/", "-"), interval=interval)
             data = quote.history(start=startDate.replace("/", "-"), interval=interval)
 
@@ -202,7 +207,9 @@ class mongoYfinance:
             data.reset_index(inplace=True)
 
             if "Datetime" in data:
-                lastTicker = self.getLastTicker(symbol['sym'])
+                lastTicker = self.getLastTicker(symbol['_id']['sym'])
+                tickersNotRounded = data[data['Datetime'].dt.second > 0].index
+                data.drop(tickersNotRounded, inplace=True)
 
                 # update already exists in database
                 if lastTicker:
@@ -214,30 +221,49 @@ class mongoYfinance:
                     if len(data) > 0 and apiData.timestamp() - storedData.timestamp() > 120:
                         self.sprint("Adding '[" + startDate + ", " + endDate + "]' data for symbol '"
                                     + symbol['sym'] + "' (" + str(len(data)) + " entries)")
-                        data['ticker'] = symbol['sym']
-                        self.yfdb.timeline.insert_many(data.to_dict(orient='records'))
+                        dictData = data.to_dict(orient='records')
+
+                        for data in dictData:
+                            data["_id"] = {"sym": symbol['_id']['sym'], "Datetime": data["Datetime"]}
+                            data.pop('Datetime', None)
+
+                        ids = [dt.pop("_id") for dt in dictData]
+
+                        operations = [UpdateOne({"_id": idn}, {'$set': dt}, upsert=True) for idn, dt in
+                                      zip(ids, dictData)]
+
+                        self.yfdb.timeline.bulk_write(operations)
 
                 # insert new data
                 else:
                     if len(data) > 0:
                         self.sprint("Adding '[" + startDate + ", " + endDate + "]' data for symbol '"
-                                    + symbol['sym'] + "' (" + str(len(data)) + " entries)")
-                        data['ticker'] = symbol['sym']
-                        self.yfdb.timeline.insert_many(data.to_dict(orient='records'))
+                                    + symbol['_id']['sym'] + "' (" + str(len(data)) + " entries)")
+                        dictData = data.to_dict(orient='records')
+
+                        for data in dictData:
+                            data["_id"] = {"sym": symbol['_id']['sym'], "Datetime": data["Datetime"]}
+                            data.pop('Datetime', None)
+
+                        ids = [dt.pop("_id") for dt in dictData]
+
+                        operations = [UpdateOne({"_id": idn}, {'$set': dt}, upsert=True) for idn, dt in
+                                      zip(ids, dictData)]
+
+                        self.yfdb.timeline.bulk_write(operations)
 
 
     def getTicker(self, symbol):
-        print(symbol)
-        self.add(symbol)
+        # self.add(symbol)
         self.update()
 
-        symbols = self.yfdb.timeline.find({'ticker': symbol})
+        symbols = self.yfdb.timeline.find({'_id.sym': symbol})
         volume = {}
         close = {}
         cleanSymbols = {}
 
         for s in symbols:
-            datetimeStock = (int)(s['Datetime'].timestamp() * 1000)
+            datetimeStock = int(s['_id']['Datetime'].timestamp() * 1000)
             volume[datetimeStock] = s['Volume']
             close[datetimeStock] = s['Close']
 
@@ -247,12 +273,12 @@ class mongoYfinance:
 
 
     def getLastTicker(self, symbol):
-        symbols = self.yfdb.timeline.find({'ticker': symbol}).sort('_id', -1).limit(1);
+        symbols = self.yfdb.timeline.find({'_id.sym': symbol}).sort('_id', -1).limit(1);
         symbolsList = list(symbols)
 
         if len(symbolsList) == 0:
             return None
         elif 'Datetime' in symbolsList[0]:
-            return symbolsList[0]['Datetime']
+            return symbolsList[0]['_id']['Datetime']
         else:
             return None

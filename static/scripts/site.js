@@ -33,7 +33,7 @@ Site.prototype.LoadStoredSymbols = function (reloadChart = false) {
 	// store the site context.
 	var that = this;
 
-	// pull the HTTP REquest
+	// pull the HTTP Request
 	$.ajax({
 		url: "/list",
 		method: "GET",
@@ -60,6 +60,9 @@ Site.prototype.LoadStoredSymbols = function (reloadChart = false) {
             // call the request to load the chart and pass the data context with it.
             if(reloadChart)
                 that.LoadChart(context);
+		}else {
+		    jQuery("#chart_container").html("");
+		    jQuery(".symbolListDiv").hide("");
 		}
 	});
 }
@@ -197,6 +200,9 @@ Site.prototype.checkLineIntersection = function (a1, a2) {
 //	});
 //};
 Site.prototype.GetQuote = function(symbol = this.symbol){
+
+    jQuery(".symbolListDiv .loadingChart").addClass("d-inline-block");
+
 	// store the site context.
     var that = this;
 
@@ -250,8 +256,6 @@ Site.prototype.SubmitForm = function(){
 
 Site.prototype.getSymbolChart = function (e){
         symbol = jQuery(e).attr("data-id");
-        jQuery(".symbolListDiv .loadingChart").addClass("d-inline-block");
-        console.log(symbol);
         this.symbol = symbol;
         this.GetQuote(symbol);
 }
@@ -365,9 +369,9 @@ Site.prototype.RenderChart = function(data, quote){
 	    console.log(volumeData);
 
 	    this.chart = Highcharts.stockChart('chart_container', {
-//		    time: {
-//                timezone: 'Etc/GMT+7'
-//            },
+		    time: {
+                timezone: 'Etc/GMT+6'
+            },
             yAxis: [{
                 labels: {
                     align: 'left'
@@ -399,7 +403,13 @@ Site.prototype.RenderChart = function(data, quote){
 //            title: {
 //                text: title
 //            },
-
+            plotOptions: {
+                series: {
+                    dataGrouping: {
+                        enabled: false
+                    }
+                }
+            },
             series: [{
                 name: quote.shortName,
                 data: priceData,
