@@ -478,7 +478,7 @@ Site.prototype.RenderChart = function(data, quote){
                     count: 1,
                     text: 'Tudo'
                 }],
-                selected: 7,
+                selected: 3,
                 inputEnabled: false
             },
 
