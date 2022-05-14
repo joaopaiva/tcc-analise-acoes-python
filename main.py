@@ -116,4 +116,5 @@ def home():
 if __name__ == "__main__":
     # yfdb = mongoYfinance("tccanaliseacoes", "oiDHq8LUtoKUkyIA", "cluster0.qxqqc.mongodb.net/myFirstDatabase?retryWrites=true&w=majority")
     # print(type(yfdb.getTicker("BTC-USD")))
-    app.run(debug=True)
+    # app.run(debug=True)
+    yfdb.getIndicators("NUBR33.SA")

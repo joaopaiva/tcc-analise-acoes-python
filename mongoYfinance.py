@@ -27,7 +27,6 @@ class mongoYfinance:
         if self.verbose:
             print(msg)
 
-
     #
     # Generic function to check all user input dates
     # The format must be dd/mm/yyyy and cannot be a date in the future.
@@ -44,7 +43,6 @@ class mongoYfinance:
             self.sprint("Error: invalid provided date format (expected yyyy/mm/dd)")
             exit()
 
-
     #
     # Given a symbol document in the mongodb this returns the date it contains.
     #
@@ -55,7 +53,6 @@ class mongoYfinance:
             return symbol['_id']['Datetime']
         except ValueError:
             self.sprint("Error: invalid provided date format (expected yyyy/mm/dd)")
-
 
     #
     # Initialises the ddbb
@@ -69,7 +66,6 @@ class mongoYfinance:
         self.yfdb = self.mongoClient[database];
         self.verbose = verbose
 
-
     #
     # Removes all content in the database (Caution!)
     #
@@ -82,7 +78,6 @@ class mongoYfinance:
             self.yfdb.timeline.delete_many({});
             self.yfdb.symbols.delete_many({});
 
-
     def add(self, symbol, startDate=None, endDate=None):
 
         exists = self.yfdb.symbols.count_documents({'_id.sym': symbol})
@@ -93,18 +88,21 @@ class mongoYfinance:
             if "shortName" not in quote.info:
                 return {'symbolExists': False, 'added': False, 'message': 'Symbol ' + symbol + ' not found in API'}
 
-            self.yfdb.symbols.replace_one({'_id': {'sym': symbol}}, {'_id': {'sym': symbol}, 'shortName': quote.info['shortName']}, upsert=True)
+            self.yfdb.symbols.replace_one({'_id': {'sym': symbol}},
+                                          {'_id': {'sym': symbol}, 'shortName': quote.info['shortName']}, upsert=True)
             self.sprint("'" + symbol + "'" + " added to the database")
             oldestDate = datetime.today() - timedelta(days=6)
             self.fetchInterval(oldestDate.strftime("%Y/%m/%d"),
                                date.today().strftime("%Y/%m/%d"),
                                symbol=symbol)
 
-            result = {'symbolExists': True, 'added': True, 'message': 'Symbol ' + symbol + ' was successfully added', 'sym': symbol, 'shortName': quote.info['shortName']}
+            result = {'symbolExists': True, 'added': True, 'message': 'Symbol ' + symbol + ' was successfully added',
+                      'sym': symbol, 'shortName': quote.info['shortName']}
         else:
             symbols = self.yfdb.symbols.find({'_id.sym': symbol})
             for s in symbols:
-                result = {'symbolExists': True, 'added': False, 'message': 'Symbol ' + symbol + ' is already in database',
+                result = {'symbolExists': True, 'added': False,
+                          'message': 'Symbol ' + symbol + ' is already in database',
                           'sym': symbol, 'shortName': s['shortName']}
 
         if startDate != None:
@@ -131,7 +129,6 @@ class mongoYfinance:
             self.sprint("'" + symbol + "'" + " removed from the database")
             return {'removed': True, 'message': symbol + ' removed from the database'}
 
-
     #
     # Prints information regarding the admin info (start and end dates)
     # and the symbols contained in the database
@@ -151,7 +148,6 @@ class mongoYfinance:
             print("Oldest record: " + min(dates).strftime("%Y/%m/%d"))
             print("Most recent record: " + max(dates).strftime("%Y/%m/%d"))
 
-
     def listSymbols(self):
         symbols = self.yfdb.symbols.find()
         symList = {}
@@ -163,7 +159,6 @@ class mongoYfinance:
             count += 1
 
         return symList
-
 
     #
     # Updates the database fetching data for all symbols since last
@@ -252,7 +247,6 @@ class mongoYfinance:
 
                         self.yfdb.timeline.bulk_write(operations)
 
-
     def getTicker(self, symbol):
         # self.add(symbol)
         self.update()
@@ -271,7 +265,6 @@ class mongoYfinance:
         cleanSymbols["Volume"] = volume
         return cleanSymbols
 
-
     def getLastTicker(self, symbol):
         symbols = self.yfdb.timeline.find({'_id.sym': symbol}).sort('_id', -1).limit(1);
         symbolsList = list(symbols)
@@ -282,3 +275,398 @@ class mongoYfinance:
             return symbolsList[0]['_id']['Datetime']
         else:
             return None
+
+    # https://www.mongodb.com/developer/article/time-series-macd-rsi/
+    def getIndicators(self, symbol):
+        # self.add(symbol)
+        self.update()
+
+        indicators = self.yfdb.timeline.aggregate([
+            {
+                "$match": {
+                    "_id.sym": symbol,
+                }
+            },
+            {
+                "$group": {
+                    "_id": {
+                        "sym": "$_id.sym",
+                        "Datetime": {
+                            "$dateTrunc": {
+                                "date": "$_id.Datetime",
+                                "unit": "minute",
+                                "binSize": 5,
+                            },
+                        },
+                    },
+                    "close": {"$last": "$Close"},
+                },
+            },
+            {
+                "$sort": {
+                    "_id.Datetime": 1,
+                },
+            },
+            {
+                "$project": {
+                    "_id": 1,
+                    "price": "$close",
+                }
+            },
+            {
+                "$setWindowFields": {
+                    "partitionBy": "$_id.sym",
+                    "sortBy": {"_id.Datetime": 1},
+                    "output": {
+                        "ema_10": {
+                            "$expMovingAvg": {"input": "$price", "N": 10},
+                        },
+                        "ema_20": {
+                            "$expMovingAvg": {"input": "$price", "N": 20},
+                        },
+                        "ema_50": {
+                            "$expMovingAvg": {"input": "$price", "N": 50},
+                        },
+                        "ema_100": {
+                            "$expMovingAvg": {"input": "$price", "N": 100},
+                        },
+                        "ema_200": {
+                            "$expMovingAvg": {"input": "$price", "N": 200},
+                        },
+                        "ema_12": {
+                            "$expMovingAvg": {"input": "$price", "N": 12},
+                        },
+                        "ema_26": {
+                            "$expMovingAvg": {"input": "$price", "N": 26},
+                        },
+                    },
+                },
+            },
+            {"$addFields": {"macdLine": {"$subtract": ["$ema_12", "$ema_26"]}}},
+            {
+                "$setWindowFields": {
+                    "partitionBy": "$_id.sym",
+                    "sortBy": {"_id.Datetime": 1},
+                    "output": {
+                        "macdSignal": {
+                            "$expMovingAvg": {"input": "$macdLine", "N": 9},
+                        },
+                    },
+                },
+            },
+            {
+                "$addFields": {"macdHistogram": {"$subtract": ["$macdLine", "$macdSignal"]}},
+            }, {
+                "$setWindowFields": {
+                    "partitionBy": "$_id.sym",
+                    "sortBy": {"_id.Datetime": 1},
+                    "output": {
+                        "previousPrice": {"$shift": {"by": -1, "output": "$price"}},
+                    },
+                },
+            },
+            {
+                "$addFields": {
+                    "diff": {
+                        "$subtract": ["$price", {"$ifNull": ["$previousPrice", "$price"]}],
+                    },
+                },
+            },
+            {
+                "$addFields": {
+                    "gain": {"$cond": {"if": {"$gte": ["$diff", 0]}, "then": "$diff", "else": 0}},
+                    "loss": {
+                        "$cond": {
+                            "if": {"$lte": ["$diff", 0]}, "then": {"$abs": "$diff"}, "else": 0
+                        },
+                    },
+                },
+            },
+            {
+                "$setWindowFields": {
+                    "partitionBy": "$_id.sym",
+                    "sortBy": {"_id.Datetime": 1},
+                    "output": {
+                        "avgGain": {
+                            "$avg": "$gain",
+                            "window": {"documents": [-14, 0]},
+                        },
+                        "avgLoss": {
+                            "$avg": "$loss",
+                            "window": {"documents": [-14, 0]},
+                        },
+                        "documentNumber": {"$documentNumber": {}},
+                    },
+                },
+            },
+            {
+                "$addFields": {
+                    "relativeStrength": {
+                        "$cond": {
+                            "if": {
+                                "$gt": ["$avgLoss", 0],
+                            },
+                            "then": {
+                                "$divide": ["$avgGain", "$avgLoss"],
+                            },
+                            "else": "$avgGain",
+                        },
+                    },
+                },
+            },
+            {
+                "$addFields": {
+                    "rsi": {
+                        "$cond": {
+                            "if": {"$gt": ["$documentNumber", 14]},
+                            "then": {
+                                "$subtract": [
+                                    100,
+                                    {"$divide": [100, {"$add": [1, "$relativeStrength"]}]},
+                                ],
+                            },
+                            "else": None,
+                        },
+                    },
+                },
+            },
+            {
+                "$setWindowFields": {
+                    "partitionBy": "$_id.sym",
+                    "sortBy": {"_id.Datetime": 1},
+                    "output": {
+                        "previousRsi": {"$shift": {"by": -1, "output": "$rsi"}},
+                    },
+                },
+            },
+
+            # CHANDE, Tushar S.; KROLL, Stanley.
+            # The new technical trader: boost your profit by plugging into the latest indicators.
+            # John Wiley & Sons Incorporated, p. 100, 1994.
+            {
+                "$setWindowFields": {
+                    "partitionBy": "$_id.sym",
+                    "sortBy": {"_id.Datetime": 1},
+                    "output": {
+                        "cmoUp": {
+                            "$sum": "$gain",
+                            "window": {"documents": [-9, 0]},
+                        },
+                        "cmoDown": {
+                            "$sum": "$loss",
+                            "window": {"documents": [-9, 0]},
+                        },
+                        "documentNumber": {"$documentNumber": {}},
+                    },
+                },
+            },
+            {
+                "$addFields": {
+                    "cmo_14": {
+                        "$cond": {
+                            "if": {"$gt": ["$documentNumber", 9]},
+                            "then": {
+                                "$multiply": [
+                                    100,
+                                    {"$divide": [{"$subtract": ["$cmoUp", "$cmoDown"]}, {"$add": ["$cmoUp", "$cmoDown"]}]},
+                                ],
+                            },
+                            "else": None,
+                        },
+                    },
+                },
+            },
+            {
+                "$addFields": {
+                    "cmo_14_signal": {
+                        "$switch": {
+                            "branches": [
+                                {"case": {
+                                    "$and": [
+                                        {"$lt": ["$cmo_14", -70]},
+                                        {"$ifNull": ["$cmo_14", False]}
+                                    ]},
+                                    "then": {"weight": 1, "recommendation": "Buy"}},
+                                {"case": {
+                                    "$and": [
+                                        {"$gt": ["$cmo_14", 70]},
+                                        {"$ifNull": ["$cmo_14", False]}
+                                    ]},
+                                    "then": {"weight": -1, "recommendation": "Sell"}},
+                            ],
+                            "default": {"weight": 0, "recommendation": "Neutral"}
+                        }
+                    },
+                },
+
+            },
+            # DI LORENZO, Renato. Basic technical analysis of financial markets.
+            # Milan, Italy: Springer, p. 58, 2013.
+            {
+                "$addFields": {
+                    # "ema_10_signal": {
+                    #     "$cond": {
+                    #         "if": {"$lt": ["$ema_10", "$ema_20"]},
+                    #         "then": {"weight": -1, "recommendation": "Sell"},
+                    #         "else": {"weight": 1, "recommendation": "Buy"},
+                    #     },
+                    # },
+                    "ema_10_signal": {
+                        "$switch": {
+                            "branches": [
+                                {"case": {"$lt": ["$ema_20", "$ema_10"]},
+                                 "then": {"weight": 1, "recommendation": "Buy"}},
+                                {"case": {"$gt": ["$ema_20", "$ema_10"]},
+                                 "then": {"weight": -1, "recommendation": "Sell"}},
+                            ],
+                            "default": {"weight": 0, "recommendation": "Neutral"}
+                        }
+                    },
+                    "ema_20_signal": {
+                        "$switch": {
+                            "branches": [
+                                {"case": {"$lt": ["$ema_50", "$ema_20"]},
+                                 "then": {"weight": 1, "recommendation": "Buy"}},
+                                {"case": {"$gt": ["$ema_50", "$ema_20"]},
+                                 "then": {"weight": -1, "recommendation": "Sell"}},
+                            ],
+                            "default": {"weight": 0, "recommendation": "Neutral"}
+                        }
+                    },
+                    "ema_50_signal": {
+                        "$switch": {
+                            "branches": [
+                                {"case": {"$lt": ["$ema_100", "$ema_50"]},
+                                 "then": {"weight": 1, "recommendation": "Buy"}},
+                                {"case": {"$gt": ["$ema_100", "$ema_50"]},
+                                 "then": {"weight": -1, "recommendation": "Sell"}},
+                            ],
+                            "default": {"weight": 0, "recommendation": "Neutral"}
+                        }
+                    },
+                    "ema_100_signal": {
+                        "$switch": {
+                            "branches": [
+                                {"case": {"$lt": ["$ema_200", "$ema_100"]},
+                                 "then": {"weight": 1, "recommendation": "Buy"}},
+                                {"case": {"$gt": ["$ema_200", "$ema_100"]},
+                                 "then": {"weight": -1, "recommendation": "Sell"}},
+                            ],
+                            "default": {"weight": 0, "recommendation": "Neutral"}
+                        }
+                    },
+                },
+            },
+            # ANDERSON, Bing; LI, Shuyun. An investigation of the relative strength index.
+            # Banks & bank systems, n. 10, Iss. 1, p. 92-96, 2015.
+            # "Surprisingly, the trading simulation with RSI at 40 and
+            # 60 being the buy/sell threshold performs the best
+            # among all the parameter combinations we have tested
+            # so far. The total profit is 5206 pips. There are 125
+            # trades in total. The trade with the biggest loss has a
+            # loss of 1876 pips."
+            {
+                "$addFields": {
+                    "rsi_signal": {
+                        "$switch": {
+                            "branches": [
+                                {"case": {
+                                    "$and": [
+                                        {"$gt": ["$rsi", 60]},
+                                        {"$gt": ["$previousRsi", "$rsi"]}
+                                    ]
+                                }, "then": {"weight": -1, "recommendation": "Sell"}},
+                                {"case": {
+                                    "$and": [
+                                        {"$lt": ["$rsi", 40]},
+                                        {"$lt": ["$previousRsi", "$rsi"]}
+                                    ]
+                                }, "then": {"weight": 1, "recommendation": "Buy"}},
+                            ],
+                            "default": {"weight": 0, "recommendation": "Neutral"}
+                        }
+                    },
+                },
+            },
+            # Stochastic RSI Oscillator
+            # CHANDE, Tushar S.; KROLL, Stanley.
+            # The new technical trader: boost your profit by plugging into the latest indicators.
+            # John Wiley & Sons Incorporated, p. 124, 1994.
+            {
+                "$setWindowFields": {
+                    "partitionBy": "$_id.sym",
+                    "sortBy": {"_id.Datetime": 1},
+                    "output": {
+                        "rsi_stoch_low": {
+                            "$min": "$rsi",
+                            "window": {"documents": [-14, 0]},
+                        },
+                        "rsi_stoch_high": {
+                            "$max": "$rsi",
+                            "window": {"documents": [-14, 0]},
+                        },
+                        "documentNumber": {"$documentNumber": {}},
+                    },
+                },
+            },
+            {
+                "$addFields": {
+                    "rsi_stoch": {
+                        "$cond": {
+                            "if": {
+                                "$and": [
+                                    {"$gt": ["$documentNumber", 14]},
+                                    {"$gt": [{"$subtract": ["$rsi_stoch_high", "$rsi_stoch_low"]}, 0]}
+                                ]
+                            },
+                            "then": {
+                                "$divide": [
+                                    {"$subtract": ["$rsi", "$rsi_stoch_low"]},
+                                    {"$subtract": ["$rsi_stoch_high", "$rsi_stoch_low"]}
+                                ],
+                            },
+                            "else": None,
+                        },
+                    }
+                },
+
+            },
+            {
+                "$setWindowFields": {
+                    "partitionBy": "$_id.sym",
+                    "sortBy": {"_id.Datetime": 1},
+                    "output": {
+                        "previousRsiStoch": {"$shift": {"by": -1, "output": "$rsi_stoch"}},
+                    },
+                },
+            },
+            {
+                "$addFields": {
+                    "rsi_stoch_signal": {
+                        "$switch": {
+                            "branches": [
+                                {"case": {
+                                    "$and": [
+                                        {"$gt": ["$rsi_stoch", 0.8]},
+                                        {"$gt": ["$previousRsiStoch", "$rsi_stoch"]},
+                                        {"$ifNull": ["$rsi_stoch", False]}
+                                    ]
+                                }, "then": {"weight": -1, "recommendation": "Sell"}},
+                                {"case": {
+                                    "$and": [
+                                        {"$lt": ["$rsi_stoch", 0.2]},
+                                        {"$lt": ["$previousRsiStoch", "$rsi_stoch"]},
+                                        {"$ifNull": ["$rsi_stoch", False]}
+                                    ]
+                                }, "then": {"weight": 1, "recommendation": "Buy"}},
+                            ],
+                            "default": {"weight": 0, "recommendation": "Neutral"}
+                        }
+                    }
+                },
+
+            },
+        ])
+        self.sprint(list(indicators))
+
+
