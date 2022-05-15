@@ -93,7 +93,6 @@ class mongoYfinance:
             self.sprint("'" + symbol + "'" + " added to the database")
             oldestDate = datetime.today() - timedelta(days=6)
             self.fetchInterval(oldestDate.strftime("%Y/%m/%d"),
-                               date.today().strftime("%Y/%m/%d"),
                                symbol=symbol)
 
             result = {'symbolExists': True, 'added': True, 'message': 'Symbol ' + symbol + ' was successfully added',
@@ -168,18 +167,44 @@ class mongoYfinance:
         tickers = self.yfdb.symbols.find()
         for ticker in tickers:
             tickerTimeline = list(self.yfdb.timeline.find({'_id.sym': ticker["_id"]["sym"]}))
+
             if len(tickerTimeline) > 0:
+                dateToday = datetime.today()
+                oldestDate = max(map(lambda s: self.__getFormattedDate(s), tickerTimeline))
+                delta = dateToday - oldestDate
+
+                endDate = oldestDate
+                week_period = delta.days // 6
+                day_period = delta.days % 6
+                if week_period > 0:
+                    for i in range(1, week_period):
+                        if oldestDate is not None:
+                            endDate = endDate+timedelta(days=6)
+
+                            print("oldestDate:", oldestDate, "endDate:", endDate, "week_period:", week_period)
+                            self.fetchInterval(oldestDate.strftime("%Y/%m/%d"),
+                                               endDate.strftime("%Y/%m/%d"),
+                                               symbol=ticker["_id"]["sym"])
+
+                if week_period > 0 and day_period > 0:
+                    if oldestDate is not None:
+                        endDate = endDate + timedelta(days=day_period)
+                        print("oldestDate:", oldestDate, "endDate:", endDate, "day_period:", day_period)
+                        self.fetchInterval(oldestDate.strftime("%Y/%m/%d"),
+                                           endDate.strftime("%Y/%m/%d"),
+                                           symbol=ticker["_id"]["sym"])
+
                 # print(tickerTimeline)
                 oldestDate = max(map(lambda s: self.__getFormattedDate(s), tickerTimeline))
                 print(oldestDate)
                 if oldestDate is not None:
                     self.fetchInterval(oldestDate.strftime("%Y/%m/%d"),
-                                       date.today().strftime("%Y/%m/%d"),
+                                       None,
                                        symbol=ticker["_id"]["sym"])
             else:
                 oldestDate = datetime.today() - timedelta(days=6)
                 self.fetchInterval(oldestDate.strftime("%Y/%m/%d"),
-                                   date.today().strftime("%Y/%m/%d"),
+                                   None,
                                    symbol=ticker["_id"]["sym"])
 
     # Fetches symbol data for the interval between startDate and endDate
@@ -196,8 +221,10 @@ class mongoYfinance:
             # download dataframe
             quote = yf.Ticker(symbol['_id']['sym'])
             # data = quote.history(start=startDate.replace("/", "-"), end=endDate.replace("/", "-"), interval=interval)
-            data = quote.history(start=startDate.replace("/", "-"), interval=interval)
-
+            if endDate is not None:
+                data = quote.history(start=startDate.replace("/", "-"), end=endDate.replace("/", "-"), interval=interval)
+            else:
+                data = quote.history(start=startDate.replace("/", "-"), interval=interval)
             # set index to column in pandas DataFrame
             data.reset_index(inplace=True)
 
@@ -214,8 +241,8 @@ class mongoYfinance:
                     print(apiData.timestamp() - storedData.timestamp())
 
                     if len(data) > 0 and apiData.timestamp() - storedData.timestamp() > 120:
-                        self.sprint("Adding '[" + startDate + ", " + endDate + "]' data for symbol '"
-                                    + symbol['sym'] + "' (" + str(len(data)) + " entries)")
+                        # self.sprint("Adding '[" + startDate + ", " + endDate + "]' data for symbol '"
+                        #             + symbol['sym'] + "' (" + str(len(data)) + " entries)")
                         dictData = data.to_dict(orient='records')
 
                         for data in dictData:
@@ -232,8 +259,8 @@ class mongoYfinance:
                 # insert new data
                 else:
                     if len(data) > 0:
-                        self.sprint("Adding '[" + startDate + ", " + endDate + "]' data for symbol '"
-                                    + symbol['_id']['sym'] + "' (" + str(len(data)) + " entries)")
+                        # self.sprint("Adding '[" + startDate + ", " + endDate + "]' data for symbol '"
+                        #             + symbol['_id']['sym'] + "' (" + str(len(data)) + " entries)")
                         dictData = data.to_dict(orient='records')
 
                         for data in dictData:
@@ -365,6 +392,29 @@ class mongoYfinance:
                     },
                 },
             },
+
+            # MACD Indicator
+            # NOR, Safwan Mohd; WICKREMASINGHE, Guneratne. The profitability of
+            # MACD and RSI trading rules in the Australian stock market.
+            # Investment management and financial innovations,
+            # n. 11, Iss. 4 (contin.), p. 196, 2014.
+            {
+                "$addFields": {
+                    "macd_indicator": {
+                        "$switch": {
+                            "branches": [
+                                {"case": {"$gt": ["$macdLine", "$macdSignal"]},
+                                 "then": {"weight": 1, "recommendation": "Buy"}},
+                                {"case": {"$lt": ["$macdLine", "$macdSignal"]},
+                                 "then": {"weight": -1, "recommendation": "Sell"}},
+                            ],
+                            "default": {"weight": 0, "recommendation": "Neutral"}
+                        }
+                    },
+                },
+            },
+            # End MACD Indicator
+
             {
                 "$addFields": {
                     "diff": {
@@ -440,6 +490,7 @@ class mongoYfinance:
                 },
             },
 
+            # Chande Momentum Oscillator
             # CHANDE, Tushar S.; KROLL, Stanley.
             # The new technical trader: boost your profit by plugging into the latest indicators.
             # John Wiley & Sons Incorporated, p. 100, 1994.
@@ -462,7 +513,7 @@ class mongoYfinance:
             },
             {
                 "$addFields": {
-                    "cmo_14": {
+                    "cmo_9": {
                         "$cond": {
                             "if": {"$gt": ["$documentNumber", 9]},
                             "then": {
@@ -478,19 +529,19 @@ class mongoYfinance:
             },
             {
                 "$addFields": {
-                    "cmo_14_signal": {
+                    "cmo_9_indicator": {
                         "$switch": {
                             "branches": [
                                 {"case": {
                                     "$and": [
-                                        {"$lt": ["$cmo_14", -70]},
-                                        {"$ifNull": ["$cmo_14", False]}
+                                        {"$lt": ["$cmo_9", -70]},
+                                        {"$ifNull": ["$cmo_9", False]}
                                     ]},
                                     "then": {"weight": 1, "recommendation": "Buy"}},
                                 {"case": {
                                     "$and": [
-                                        {"$gt": ["$cmo_14", 70]},
-                                        {"$ifNull": ["$cmo_14", False]}
+                                        {"$gt": ["$cmo_9", 70]},
+                                        {"$ifNull": ["$cmo_9", False]}
                                     ]},
                                     "then": {"weight": -1, "recommendation": "Sell"}},
                             ],
@@ -498,20 +549,15 @@ class mongoYfinance:
                         }
                     },
                 },
-
             },
+            # End Chande Momentum Oscillator
+
+            # EMA's Indicators
             # DI LORENZO, Renato. Basic technical analysis of financial markets.
             # Milan, Italy: Springer, p. 58, 2013.
             {
                 "$addFields": {
-                    # "ema_10_signal": {
-                    #     "$cond": {
-                    #         "if": {"$lt": ["$ema_10", "$ema_20"]},
-                    #         "then": {"weight": -1, "recommendation": "Sell"},
-                    #         "else": {"weight": 1, "recommendation": "Buy"},
-                    #     },
-                    # },
-                    "ema_10_signal": {
+                    "ema_10_indicator": {
                         "$switch": {
                             "branches": [
                                 {"case": {"$lt": ["$ema_20", "$ema_10"]},
@@ -522,7 +568,7 @@ class mongoYfinance:
                             "default": {"weight": 0, "recommendation": "Neutral"}
                         }
                     },
-                    "ema_20_signal": {
+                    "ema_20_indicator": {
                         "$switch": {
                             "branches": [
                                 {"case": {"$lt": ["$ema_50", "$ema_20"]},
@@ -533,7 +579,7 @@ class mongoYfinance:
                             "default": {"weight": 0, "recommendation": "Neutral"}
                         }
                     },
-                    "ema_50_signal": {
+                    "ema_50_indicator": {
                         "$switch": {
                             "branches": [
                                 {"case": {"$lt": ["$ema_100", "$ema_50"]},
@@ -544,7 +590,7 @@ class mongoYfinance:
                             "default": {"weight": 0, "recommendation": "Neutral"}
                         }
                     },
-                    "ema_100_signal": {
+                    "ema_100_indicator": {
                         "$switch": {
                             "branches": [
                                 {"case": {"$lt": ["$ema_200", "$ema_100"]},
@@ -557,6 +603,9 @@ class mongoYfinance:
                     },
                 },
             },
+            # End EMA's Indicators
+
+            #RSI Indicator
             # ANDERSON, Bing; LI, Shuyun. An investigation of the relative strength index.
             # Banks & bank systems, n. 10, Iss. 1, p. 92-96, 2015.
             # "Surprisingly, the trading simulation with RSI at 40 and
@@ -567,7 +616,7 @@ class mongoYfinance:
             # loss of 1876 pips."
             {
                 "$addFields": {
-                    "rsi_signal": {
+                    "rsi_indicator": {
                         "$switch": {
                             "branches": [
                                 {"case": {
@@ -588,6 +637,8 @@ class mongoYfinance:
                     },
                 },
             },
+            #End RSI Oscillator
+
             # Stochastic RSI Oscillator
             # CHANDE, Tushar S.; KROLL, Stanley.
             # The new technical trader: boost your profit by plugging into the latest indicators.
@@ -642,7 +693,7 @@ class mongoYfinance:
             },
             {
                 "$addFields": {
-                    "rsi_stoch_signal": {
+                    "rsi_stoch_indicator": {
                         "$switch": {
                             "branches": [
                                 {"case": {
@@ -664,9 +715,214 @@ class mongoYfinance:
                         }
                     }
                 },
-
             },
+            # End Stochastic RSI Oscillator
+
+            {
+                "$addFields": {
+                    "indicators_tendency":
+                        {
+                            "$sum": [
+                                "$macd_indicator.weight",
+                                "$cmo_9_indicator.weight",
+                                "$ema_10_indicator.weight",
+                                "$ema_20_indicator.weight",
+                                "$ema_50_indicator.weight",
+                                "$ema_100_indicator.weight",
+                                "$rsi_indicator.weight",
+                                "$rsi_stoch_indicator.weight",
+                            ]
+                        }
+                },
+            },
+            {
+                "$addFields": {
+                    "indicators_recommendation": {
+                        "$switch": {
+                            "branches": [
+                                {"case": {"$gt": ["$indicators_tendency", 4]},
+                                 "then": "Strong Buy"},
+                                {"case": {"$gt": ["$indicators_tendency", 0]},
+                                 "then": "Buy"},
+                                {"case": {"$lt": ["$indicators_tendency", -4]},
+                                 "then": "Strong Sell"},
+                                {"case": {"$lt": ["$indicators_tendency", 0]},
+                                 "then": "Sell"},
+                            ],
+                            "default": "Neutral"
+                        }
+                    },
+                },
+            },
+            {
+                "$addFields": {
+                    "indicators_up": {
+                        "$sum": [
+                            {
+                                "$cond": {
+                                    "if": {"$gt": ["$macd_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                            {
+                                "$cond": {
+                                    "if": {"$gt": ["$cmo_9_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                            {
+                                "$cond": {
+                                    "if": {"$gt": ["$ema_10_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                            {
+                                "$cond": {
+                                    "if": {"$gt": ["$ema_20_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                            {
+                                "$cond": {
+                                    "if": {"$gt": ["$ema_50_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                            {
+                                "$cond": {
+                                    "if": {"$gt": ["$ema_100_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                            {
+                                "$cond": {
+                                    "if": {"$gt": ["$rsi_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                            {
+                                "$cond": {
+                                    "if": {"$gt": ["$rsi_stoch_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                        ]
+                    },
+                    "indicators_down": {
+                        "$sum": [
+                            {
+                                "$cond": {
+                                    "if": {"$lt": ["$macd_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                            {
+                                "$cond": {
+                                    "if": {"$lt": ["$cmo_9_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                            {
+                                "$cond": {
+                                    "if": {"$lt": ["$ema_10_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                            {
+                                "$cond": {
+                                    "if": {"$lt": ["$ema_20_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                            {
+                                "$cond": {
+                                    "if": {"$lt": ["$ema_50_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                            {
+                                "$cond": {
+                                    "if": {"$lt": ["$ema_100_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                            {
+                                "$cond": {
+                                    "if": {"$lt": ["$rsi_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                            {
+                                "$cond": {
+                                    "if": {"$lt": ["$rsi_stoch_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                        ]
+                    },
+                    "indicators_neutral": {
+                        "$sum": [
+                            {
+                                "$cond": {
+                                    "if": {"$eq": ["$macd_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                            {
+                                "$cond": {
+                                    "if": {"$eq": ["$cmo_9_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                            {
+                                "$cond": {
+                                    "if": {"$eq": ["$ema_10_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                            {
+                                "$cond": {
+                                    "if": {"$eq": ["$ema_20_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                            {
+                                "$cond": {
+                                    "if": {"$eq": ["$ema_50_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                            {
+                                "$cond": {
+                                    "if": {"$eq": ["$ema_100_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                            {
+                                "$cond": {
+                                    "if": {"$eq": ["$rsi_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                            {
+                                "$cond": {
+                                    "if": {"$eq": ["$rsi_stoch_indicator.weight", 0]},
+                                    "then": 1, "else": 0
+                                }
+                            },
+                        ]
+                    },
+                },
+            }
         ])
         self.sprint(list(indicators))
-
-
+#
+# -6  Strong Sell
+#
+# -3 Sell
+#
+# 0 Neutral
+#
+# + 3 Buy
+#
+# + 6 Strong Buy
