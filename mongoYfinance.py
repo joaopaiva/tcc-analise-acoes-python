@@ -210,7 +210,7 @@ class mongoYfinance:
     # Fetches symbol data for the interval between startDate and endDate
     # If the symbol is set None, all symbols found in the database are
     # updated.
-    def fetchInterval(self, startDate, endDate, symbol=None, interval='1m'):
+    def fetchInterval(self, startDate, endDate=None, symbol=None, interval='1m'):
         timezone = pytz.timezone("UTC")
 
         if symbol is None:
@@ -278,7 +278,7 @@ class mongoYfinance:
         # self.add(symbol)
         self.update()
 
-        symbols = self.yfdb.timeline.find({'_id.sym': symbol})
+        symbols = self.yfdb.timeline.find({'_id.sym': symbol}).sort('_id.Datetime', 1)
         volume = {}
         close = {}
         cleanSymbols = {}
@@ -320,13 +320,19 @@ class mongoYfinance:
                         "sym": "$_id.sym",
                         "Datetime": {
                             "$dateTrunc": {
+                                # "date": {"$toLong": "$_id.Datetime"},
                                 "date": "$_id.Datetime",
                                 "unit": "minute",
+                                # "binSize": 1,
                                 "binSize": 5,
                             },
                         },
+                        "Datetime": {
+                            "$toLong": "$_id.Datetime",
+                        },
                     },
                     "close": {"$last": "$Close"},
+                    "volume": {"$last": "$Volume"},
                 },
             },
             {
@@ -338,6 +344,8 @@ class mongoYfinance:
                 "$project": {
                     "_id": 1,
                     "price": "$close",
+                    "volume": "$volume",
+                    # "_id.Datetime": {"$toLong": "$_id.Datetime"},
                 }
             },
             {
@@ -457,7 +465,8 @@ class mongoYfinance:
                                 "$gt": ["$avgLoss", 0],
                             },
                             "then": {
-                                "$divide": ["$avgGain", "$avgLoss"],
+                                # "$divide": ["$avgGain", "$avgLoss"],
+                                "$cond": [{ "$eq": ["$avgLoss", -1]}, "$avgGain", {"$divide": ["$avgGain", "$avgLoss"]}]
                             },
                             "else": "$avgGain",
                         },
@@ -470,10 +479,16 @@ class mongoYfinance:
                         "$cond": {
                             "if": {"$gt": ["$documentNumber", 14]},
                             "then": {
-                                "$subtract": [
+                                # "$subtract": [
+                                #     100,
+                                #     {"$divide": [100, {"$add": [1, "$relativeStrength"]}]},
+                                # ],
+
+                                "$cond": [{ "$eq": ["$relativeStrength", -1]}, None, {"$subtract": [
                                     100,
                                     {"$divide": [100, {"$add": [1, "$relativeStrength"]}]},
-                                ],
+                                ]}]
+                                 # "$cond": [{ "$eq": ["$relativeStrength", -1]}, "N/A", {"$divide": ["$upvotes", "$downvotes"]}]}
                             },
                             "else": None,
                         },
@@ -517,11 +532,18 @@ class mongoYfinance:
                         "$cond": {
                             "if": {"$gt": ["$documentNumber", 9]},
                             "then": {
-                                "$multiply": [
+                                # "$multiply": [
+                                #     100,
+                                #     {"$divide": [{"$subtract": ["$cmoUp", "$cmoDown"]}, {"$add": ["$cmoUp", "$cmoDown"]}]},
+                                # ],
+
+                                "$cond": [{"$eq": [{"$add": ["$cmoUp", "$cmoDown"]}, 0]}, None, {"$multiply": [
                                     100,
-                                    {"$divide": [{"$subtract": ["$cmoUp", "$cmoDown"]}, {"$add": ["$cmoUp", "$cmoDown"]}]},
-                                ],
+                                    {"$divide": [{"$subtract": ["$cmoUp", "$cmoDown"]},
+                                                 {"$add": ["$cmoUp", "$cmoDown"]}]},
+                                ], }]
                             },
+
                             "else": None,
                         },
                     },
@@ -605,7 +627,7 @@ class mongoYfinance:
             },
             # End EMA's Indicators
 
-            #RSI Indicator
+            # RSI Indicator
             # ANDERSON, Bing; LI, Shuyun. An investigation of the relative strength index.
             # Banks & bank systems, n. 10, Iss. 1, p. 92-96, 2015.
             # "Surprisingly, the trading simulation with RSI at 40 and
@@ -671,10 +693,15 @@ class mongoYfinance:
                                 ]
                             },
                             "then": {
-                                "$divide": [
+                                # "$divide": [
+                                #     {"$subtract": ["$rsi", "$rsi_stoch_low"]},
+                                #     {"$subtract": ["$rsi_stoch_high", "$rsi_stoch_low"]}
+                                # ],
+
+                                "$cond": [{"$eq": [{"$subtract": ["$rsi_stoch_high", "$rsi_stoch_low"]}, 0]}, None, {"$divide": [
                                     {"$subtract": ["$rsi", "$rsi_stoch_low"]},
-                                    {"$subtract": ["$rsi_stoch_high", "$rsi_stoch_low"]}
-                                ],
+                                    {"$subtract": ["$rsi_stoch_high", "$rsi_stoch_low"]},
+                                ]}]
                             },
                             "else": None,
                         },
@@ -915,7 +942,11 @@ class mongoYfinance:
                 },
             }
         ])
-        self.sprint(list(indicators))
+
+        # self.sprint(list(indicators))
+
+        return list(indicators)
+
 #
 # -6  Strong Sell
 #
