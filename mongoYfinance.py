@@ -1,3 +1,7 @@
+# Inspired in
+# https://github.com/grizzlypeaksoftware/Flask-Stock-Widget
+# https://github.com/rubenafo/yfMongo
+
 import sys, os
 import re
 import csv
@@ -228,6 +232,8 @@ class mongoYfinance:
             # set index to column in pandas DataFrame
             data.reset_index(inplace=True)
 
+            self.sprint(data)
+
             if "Datetime" in data:
                 lastTicker = self.getLastTicker(symbol['_id']['sym'])
                 tickersNotRounded = data[data['Datetime'].dt.second > 0].index
@@ -303,10 +309,55 @@ class mongoYfinance:
         else:
             return None
 
+    def periodInterval(self, x):
+        """
+            Return two variables with interval and period to be fetched from API
+            Parameters:
+              x - interval from each close
+            Return:
+              interval - interval in minutes to calculate the indicators
+              days - period in days to fetch data from API
+        """
+        match x:
+            # case 'period':
+            #     return period in minutes, interval in days to be fetched
+            case '1m':
+                return 60/60, 6
+            case '5m':
+                return 60/12, 59
+            case '15m':
+                return 60/4, 59
+            case '30m':
+                return 60/2, 59
+            case '1hr':
+                return 60, 300
+            case '2hr':
+                return 2 * 60, 300
+            case '4hr':
+                return 4 * 60, 300
+            case '12hr':
+                return 12 * 60, 300
+            case '1d':
+                return 1 * 24 * 60, 300
+            case '5d':
+                return 5 * 24 * 60, 1500
+            case '1wk':
+                return 7 * 24 * 60, 2100
+            case '1mo':
+                return 30 * 24 * 60, 9000
+            case _:
+                return 60/12, 59   # 5, 59 is the default case if x is not found
+
     # https://www.mongodb.com/developer/article/time-series-macd-rsi/
-    def getIndicators(self, symbol):
+    def getIndicators(self, symbol, interval='5m'):
+
+        intervalInMinutes, days = self.periodInterval(interval)
+
+        date = datetime.today() - timedelta(days=days)
+        self.fetchInterval(date.strftime("%Y/%m/%d"), None, symbol, interval)
         # self.add(symbol)
-        self.update()
+        # self.update()
+        # self.fetchInterval(startDate, endDate=None, symbol=None, interval='1m')
 
         indicators = self.yfdb.timeline.aggregate([
             {
@@ -319,17 +370,11 @@ class mongoYfinance:
                     "_id": {
                         "sym": "$_id.sym",
                         "Datetime": {
-                            "$dateTrunc": {
-                                # "date": {"$toLong": "$_id.Datetime"},
-                                "date": "$_id.Datetime",
-                                "unit": "minute",
-                                # "binSize": 1,
-                                "binSize": 5,
-                            },
-                        },
-                        "Datetime": {
-                            "$toLong": "$_id.Datetime",
-                        },
+                            "$subtract": [
+                                {"$toLong": "$_id.Datetime"},
+                                {"$mod": [{"$toLong": "$_id.Datetime"}, 1000 * intervalInMinutes]}
+                            ]
+                        }
                     },
                     "close": {"$last": "$Close"},
                     "volume": {"$last": "$Volume"},
@@ -344,8 +389,18 @@ class mongoYfinance:
                 "$project": {
                     "_id": 1,
                     "price": "$close",
-                    "volume": "$volume",
-                    # "_id.Datetime": {"$toLong": "$_id.Datetime"},
+                    "volume": "$volume"
+                }
+            },
+            {
+                "$setWindowFields": {
+                    "partitionBy": "$id.sym",
+                    "sortBy": {"quantity": -1},
+                    "output": {
+                        "count": {
+                            "$documentNumber": {}
+                        }
+                    }
                 }
             },
             {
@@ -377,6 +432,57 @@ class mongoYfinance:
                     },
                 },
             },
+            {"$addFields": {
+                "ema_10": {
+                    "$cond": {
+                        "if": {"$gte": ["$count", 10]},
+                        "then": "$ema_10",
+                        "else": None
+                    }
+                },
+                "ema_20": {
+                    "$cond": {
+                        "if": {"$gte": ["$count", 20]},
+                        "then": "$ema_20",
+                        "else": None
+                    }
+                },
+                "ema_12": {
+                    "$cond": {
+                        "if": {"$gte": ["$count", 12]},
+                        "then": "$ema_12",
+                        "else": None
+                    }
+                },
+                "ema_26": {
+                    "$cond": {
+                        "if": {"$gte": ["$count", 26]},
+                        "then": "$ema_26",
+                        "else": None
+                    }
+                },
+                "ema_50": {
+                    "$cond": {
+                        "if": {"$gte": ["$count", 50]},
+                        "then": "$ema_50",
+                        "else": None
+                    }
+                },
+                "ema_100": {
+                    "$cond": {
+                        "if": {"$gte": ["$count", 100]},
+                        "then": "$ema_100",
+                        "else": None
+                    }
+                },
+                "ema_200": {
+                    "$cond": {
+                        "if": {"$gte": ["$count", 200]},
+                        "then": "$ema_200",
+                        "else": None
+                    }
+                },
+            }},
             {"$addFields": {"macdLine": {"$subtract": ["$ema_12", "$ema_26"]}}},
             {
                 "$setWindowFields": {
@@ -411,10 +517,27 @@ class mongoYfinance:
                     "macd_indicator": {
                         "$switch": {
                             "branches": [
-                                {"case": {"$gt": ["$macdLine", "$macdSignal"]},
-                                 "then": {"weight": 1, "recommendation": "Buy"}},
-                                {"case": {"$lt": ["$macdLine", "$macdSignal"]},
-                                 "then": {"weight": -1, "recommendation": "Sell"}},
+                                {
+                                    "case": {
+                                        "$or": [
+                                            {"$eq": ["$macdLine", None]},
+                                            {"$eq": ["$macdSignal", None]}
+                                        ]
+                                    },
+                                    "then": {"weight": None, "recommendation": None}
+                                },
+                                {
+                                    "case": {
+                                        "$gt": ["$macdLine", "$macdSignal"]
+                                    },
+                                    "then": {"weight": 1, "recommendation": "Buy"}
+                                },
+                                {
+                                    "case": {
+                                        "$lt": ["$macdLine", "$macdSignal"]
+                                    },
+                                    "then": {"weight": -1, "recommendation": "Sell"}
+                                },
                             ],
                             "default": {"weight": 0, "recommendation": "Neutral"}
                         }
@@ -453,7 +576,6 @@ class mongoYfinance:
                             "$avg": "$loss",
                             "window": {"documents": [-14, 0]},
                         },
-                        "documentNumber": {"$documentNumber": {}},
                     },
                 },
             },
@@ -465,8 +587,11 @@ class mongoYfinance:
                                 "$gt": ["$avgLoss", 0],
                             },
                             "then": {
-                                # "$divide": ["$avgGain", "$avgLoss"],
-                                "$cond": [{ "$eq": ["$avgLoss", -1]}, "$avgGain", {"$divide": ["$avgGain", "$avgLoss"]}]
+                                "$cond": [
+                                    {"$eq": ["$avgLoss", -1]},
+                                    "$avgGain",
+                                    {"$divide": ["$avgGain", "$avgLoss"]}
+                                ]
                             },
                             "else": "$avgGain",
                         },
@@ -477,18 +602,18 @@ class mongoYfinance:
                 "$addFields": {
                     "rsi": {
                         "$cond": {
-                            "if": {"$gt": ["$documentNumber", 14]},
+                            "if": {"$gt": ["$count", 14]},
                             "then": {
-                                # "$subtract": [
-                                #     100,
-                                #     {"$divide": [100, {"$add": [1, "$relativeStrength"]}]},
-                                # ],
-
-                                "$cond": [{ "$eq": ["$relativeStrength", -1]}, None, {"$subtract": [
-                                    100,
-                                    {"$divide": [100, {"$add": [1, "$relativeStrength"]}]},
-                                ]}]
-                                 # "$cond": [{ "$eq": ["$relativeStrength", -1]}, "N/A", {"$divide": ["$upvotes", "$downvotes"]}]}
+                                "$cond": [  # Avoid division by zero
+                                    {"$eq": ["$relativeStrength", -1]},
+                                    None,
+                                    {
+                                        "$subtract": [
+                                            100,
+                                            {"$divide": [100, {"$add": [1, "$relativeStrength"]}]},
+                                        ]
+                                    }
+                                ]
                             },
                             "else": None,
                         },
@@ -522,7 +647,6 @@ class mongoYfinance:
                             "$sum": "$loss",
                             "window": {"documents": [-9, 0]},
                         },
-                        "documentNumber": {"$documentNumber": {}},
                     },
                 },
             },
@@ -530,20 +654,27 @@ class mongoYfinance:
                 "$addFields": {
                     "cmo_9": {
                         "$cond": {
-                            "if": {"$gt": ["$documentNumber", 9]},
+                            "if": {"$gt": ["$count", 9]},
                             "then": {
-                                # "$multiply": [
-                                #     100,
-                                #     {"$divide": [{"$subtract": ["$cmoUp", "$cmoDown"]}, {"$add": ["$cmoUp", "$cmoDown"]}]},
-                                # ],
-
-                                "$cond": [{"$eq": [{"$add": ["$cmoUp", "$cmoDown"]}, 0]}, None, {"$multiply": [
-                                    100,
-                                    {"$divide": [{"$subtract": ["$cmoUp", "$cmoDown"]},
-                                                 {"$add": ["$cmoUp", "$cmoDown"]}]},
-                                ], }]
+                                "$cond": [  # Avoid division by zero
+                                    {
+                                        "$eq": [
+                                            {"$add": ["$cmoUp", "$cmoDown"]}, 0
+                                        ]
+                                    },
+                                    None,
+                                    {
+                                        "$multiply": [100,
+                                                      {
+                                                          "$divide": [
+                                                              {"$subtract": ["$cmoUp", "$cmoDown"]},
+                                                              {"$add": ["$cmoUp", "$cmoDown"]}
+                                                          ]
+                                                      },
+                                                      ]
+                                    }
+                                ]
                             },
-
                             "else": None,
                         },
                     },
@@ -554,18 +685,28 @@ class mongoYfinance:
                     "cmo_9_indicator": {
                         "$switch": {
                             "branches": [
-                                {"case": {
-                                    "$and": [
-                                        {"$lt": ["$cmo_9", -70]},
-                                        {"$ifNull": ["$cmo_9", False]}
-                                    ]},
-                                    "then": {"weight": 1, "recommendation": "Buy"}},
-                                {"case": {
-                                    "$and": [
-                                        {"$gt": ["$cmo_9", 70]},
-                                        {"$ifNull": ["$cmo_9", False]}
-                                    ]},
-                                    "then": {"weight": -1, "recommendation": "Sell"}},
+                                {
+                                    "case": {
+                                        "$eq": ["$cmo_9", None]
+                                    },
+                                    "then": {"weight": None, "recommendation": None}
+                                },
+                                {
+                                    "case": {
+                                        "$and": [
+                                            {"$lt": ["$cmo_9", -70]},
+                                            {"$ifNull": ["$cmo_9", False]}
+                                        ]},
+                                    "then": {"weight": 1, "recommendation": "Buy"}
+                                },
+                                {
+                                    "case": {
+                                        "$and": [
+                                            {"$gt": ["$cmo_9", 70]},
+                                            {"$ifNull": ["$cmo_9", False]}
+                                        ]},
+                                    "then": {"weight": -1, "recommendation": "Sell"}
+                                },
                             ],
                             "default": {"weight": 0, "recommendation": "Neutral"}
                         }
@@ -582,10 +723,27 @@ class mongoYfinance:
                     "ema_10_indicator": {
                         "$switch": {
                             "branches": [
-                                {"case": {"$lt": ["$ema_20", "$ema_10"]},
-                                 "then": {"weight": 1, "recommendation": "Buy"}},
-                                {"case": {"$gt": ["$ema_20", "$ema_10"]},
-                                 "then": {"weight": -1, "recommendation": "Sell"}},
+                                {
+                                    "case": {
+                                        "$or": [
+                                            {"$eq": ["$ema_20", None]},
+                                            {"$eq": ["$ema_10", None]}
+                                        ]
+                                    },
+                                    "then": {"weight": None, "recommendation": None}
+                                },
+                                {
+                                    "case": {
+                                        "$lt": ["$ema_20", "$ema_10"]
+                                    },
+                                    "then": {"weight": 1, "recommendation": "Buy"}
+                                },
+                                {
+                                    "case": {
+                                        "$gt": ["$ema_20", "$ema_10"]
+                                    },
+                                    "then": {"weight": -1, "recommendation": "Sell"}
+                                },
                             ],
                             "default": {"weight": 0, "recommendation": "Neutral"}
                         }
@@ -593,10 +751,27 @@ class mongoYfinance:
                     "ema_20_indicator": {
                         "$switch": {
                             "branches": [
-                                {"case": {"$lt": ["$ema_50", "$ema_20"]},
-                                 "then": {"weight": 1, "recommendation": "Buy"}},
-                                {"case": {"$gt": ["$ema_50", "$ema_20"]},
-                                 "then": {"weight": -1, "recommendation": "Sell"}},
+                                {
+                                    "case": {
+                                        "$or": [
+                                            {"$eq": ["$ema_50", None]},
+                                            {"$eq": ["$ema_20", None]}
+                                        ]
+                                    },
+                                    "then": {"weight": None, "recommendation": None}
+                                },
+                                {
+                                    "case": {
+                                        "$lt": ["$ema_50", "$ema_20"]
+                                    },
+                                    "then": {"weight": 1, "recommendation": "Buy"}
+                                },
+                                {
+                                    "case": {
+                                        "$gt": ["$ema_50", "$ema_20"]
+                                    },
+                                    "then": {"weight": -1, "recommendation": "Sell"}
+                                },
                             ],
                             "default": {"weight": 0, "recommendation": "Neutral"}
                         }
@@ -604,10 +779,27 @@ class mongoYfinance:
                     "ema_50_indicator": {
                         "$switch": {
                             "branches": [
-                                {"case": {"$lt": ["$ema_100", "$ema_50"]},
-                                 "then": {"weight": 1, "recommendation": "Buy"}},
-                                {"case": {"$gt": ["$ema_100", "$ema_50"]},
-                                 "then": {"weight": -1, "recommendation": "Sell"}},
+                                {
+                                    "case": {
+                                        "$or": [
+                                            {"$eq": ["$ema_100", None]},
+                                            {"$eq": ["$ema_50", None]}
+                                        ]
+                                    },
+                                    "then": {"weight": None, "recommendation": None}
+                                },
+                                {
+                                    "case": {
+                                        "$lt": ["$ema_100", "$ema_50"]
+                                    },
+                                    "then": {"weight": 1, "recommendation": "Buy"}
+                                },
+                                {
+                                    "case": {
+                                        "$gt": ["$ema_100", "$ema_50"]
+                                    },
+                                    "then": {"weight": -1, "recommendation": "Sell"}
+                                },
                             ],
                             "default": {"weight": 0, "recommendation": "Neutral"}
                         }
@@ -615,10 +807,27 @@ class mongoYfinance:
                     "ema_100_indicator": {
                         "$switch": {
                             "branches": [
-                                {"case": {"$lt": ["$ema_200", "$ema_100"]},
-                                 "then": {"weight": 1, "recommendation": "Buy"}},
-                                {"case": {"$gt": ["$ema_200", "$ema_100"]},
-                                 "then": {"weight": -1, "recommendation": "Sell"}},
+                                {
+                                    "case": {
+                                        "$or": [
+                                            {"$eq": ["$ema_200", None]},
+                                            {"$eq": ["$ema_100", None]}
+                                        ]
+                                    },
+                                    "then": {"weight": None, "recommendation": None}
+                                },
+                                {
+                                    "case": {
+                                        "$lt": ["$ema_200", "$ema_100"]
+                                    },
+                                    "then": {"weight": 1, "recommendation": "Buy"}
+                                },
+                                {
+                                    "case": {
+                                        "$gt": ["$ema_200", "$ema_100"]
+                                    },
+                                    "then": {"weight": -1, "recommendation": "Sell"}
+                                },
                             ],
                             "default": {"weight": 0, "recommendation": "Neutral"}
                         }
@@ -641,18 +850,32 @@ class mongoYfinance:
                     "rsi_indicator": {
                         "$switch": {
                             "branches": [
-                                {"case": {
-                                    "$and": [
-                                        {"$gt": ["$rsi", 60]},
-                                        {"$gt": ["$previousRsi", "$rsi"]}
-                                    ]
-                                }, "then": {"weight": -1, "recommendation": "Sell"}},
-                                {"case": {
-                                    "$and": [
-                                        {"$lt": ["$rsi", 40]},
-                                        {"$lt": ["$previousRsi", "$rsi"]}
-                                    ]
-                                }, "then": {"weight": 1, "recommendation": "Buy"}},
+                                {
+                                    "case": {
+                                        "$or": [
+                                            {"$eq": ["$rsi", None]},
+                                            {"$eq": ["$previousRsi", None]}
+                                        ]
+                                    },
+                                    "then": {"weight": None, "recommendation": None}
+                                },
+                                {
+                                    "case": {
+                                        "$and": [
+                                            {"$gt": ["$rsi", 60]},
+                                            {"$gt": ["$previousRsi", "$rsi"]}
+                                        ]
+                                    },
+                                    "then": {"weight": -1, "recommendation": "Sell"}},
+                                {
+                                    "case": {
+                                        "$and": [
+                                            {"$lt": ["$rsi", 40]},
+                                            {"$lt": ["$previousRsi", "$rsi"]}
+                                        ]
+                                    },
+                                    "then": {"weight": 1, "recommendation": "Buy"}
+                                },
                             ],
                             "default": {"weight": 0, "recommendation": "Neutral"}
                         }
@@ -678,7 +901,6 @@ class mongoYfinance:
                             "$max": "$rsi",
                             "window": {"documents": [-14, 0]},
                         },
-                        "documentNumber": {"$documentNumber": {}},
                     },
                 },
             },
@@ -688,20 +910,23 @@ class mongoYfinance:
                         "$cond": {
                             "if": {
                                 "$and": [
-                                    {"$gt": ["$documentNumber", 14]},
+                                    {"$gt": ["$count", 14]},
                                     {"$gt": [{"$subtract": ["$rsi_stoch_high", "$rsi_stoch_low"]}, 0]}
                                 ]
                             },
                             "then": {
-                                # "$divide": [
-                                #     {"$subtract": ["$rsi", "$rsi_stoch_low"]},
-                                #     {"$subtract": ["$rsi_stoch_high", "$rsi_stoch_low"]}
-                                # ],
-
-                                "$cond": [{"$eq": [{"$subtract": ["$rsi_stoch_high", "$rsi_stoch_low"]}, 0]}, None, {"$divide": [
-                                    {"$subtract": ["$rsi", "$rsi_stoch_low"]},
-                                    {"$subtract": ["$rsi_stoch_high", "$rsi_stoch_low"]},
-                                ]}]
+                                "$cond": [  # Avoid division by zero
+                                    {
+                                        "$eq": [{"$subtract": ["$rsi_stoch_high", "$rsi_stoch_low"]}, 0]
+                                    },
+                                    None,
+                                    {
+                                        "$divide": [
+                                            {"$subtract": ["$rsi", "$rsi_stoch_low"]},
+                                            {"$subtract": ["$rsi_stoch_high", "$rsi_stoch_low"]},
+                                        ]
+                                    }
+                                ]
                             },
                             "else": None,
                         },
@@ -723,20 +948,33 @@ class mongoYfinance:
                     "rsi_stoch_indicator": {
                         "$switch": {
                             "branches": [
-                                {"case": {
-                                    "$and": [
-                                        {"$gt": ["$rsi_stoch", 0.8]},
-                                        {"$gt": ["$previousRsiStoch", "$rsi_stoch"]},
-                                        {"$ifNull": ["$rsi_stoch", False]}
-                                    ]
-                                }, "then": {"weight": -1, "recommendation": "Sell"}},
-                                {"case": {
-                                    "$and": [
-                                        {"$lt": ["$rsi_stoch", 0.2]},
-                                        {"$lt": ["$previousRsiStoch", "$rsi_stoch"]},
-                                        {"$ifNull": ["$rsi_stoch", False]}
-                                    ]
-                                }, "then": {"weight": 1, "recommendation": "Buy"}},
+                                {
+                                    "case": {
+                                        "$or": [
+                                            {"$eq": ["$rsi_stoch", None]},
+                                            {"$eq": ["$previousRsiStoch", None]}
+                                        ]
+                                    },
+                                    "then": {"weight": None, "recommendation": None}
+                                },
+                                {
+                                    "case": {
+                                        "$and": [
+                                            {"$gt": ["$rsi_stoch", 0.8]},
+                                            {"$gt": ["$previousRsiStoch", "$rsi_stoch"]},
+                                            {"$ifNull": ["$rsi_stoch", False]}
+                                        ]
+                                    },
+                                    "then": {"weight": -1, "recommendation": "Sell"}},
+                                {
+                                    "case": {
+                                        "$and": [
+                                            {"$lt": ["$rsi_stoch", 0.2]},
+                                            {"$lt": ["$previousRsiStoch", "$rsi_stoch"]},
+                                            {"$ifNull": ["$rsi_stoch", False]}
+                                        ]
+                                    },
+                                    "then": {"weight": 1, "recommendation": "Buy"}},
                             ],
                             "default": {"weight": 0, "recommendation": "Neutral"}
                         }
@@ -767,14 +1005,30 @@ class mongoYfinance:
                     "indicators_recommendation": {
                         "$switch": {
                             "branches": [
-                                {"case": {"$gt": ["$indicators_tendency", 4]},
-                                 "then": "Strong Buy"},
-                                {"case": {"$gt": ["$indicators_tendency", 0]},
-                                 "then": "Buy"},
-                                {"case": {"$lt": ["$indicators_tendency", -4]},
-                                 "then": "Strong Sell"},
-                                {"case": {"$lt": ["$indicators_tendency", 0]},
-                                 "then": "Sell"},
+                                {
+                                    "case": {
+                                        "$gt": ["$indicators_tendency", 4]
+                                    },
+                                    "then": "Strong Buy"
+                                },
+                                {
+                                    "case": {
+                                        "$gt": ["$indicators_tendency", 0]
+                                    },
+                                    "then": "Buy"
+                                },
+                                {
+                                    "case": {
+                                        "$lt": ["$indicators_tendency", -4]
+                                    },
+                                    "then": "Strong Sell"
+                                },
+                                {
+                                    "case": {
+                                        "$lt": ["$indicators_tendency", 0]
+                                    },
+                                    "then": "Sell"
+                                },
                             ],
                             "default": "Neutral"
                         }
@@ -787,49 +1041,89 @@ class mongoYfinance:
                         "$sum": [
                             {
                                 "$cond": {
-                                    "if": {"$gt": ["$macd_indicator.weight", 0]},
+                                    "if": {
+                                        "$and": [
+                                            {"$gt": ["$macd_indicator.weight", 0]},
+                                            {"$ifNull": ["$macd_indicator.weight", False]}
+                                        ]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },
                             {
                                 "$cond": {
-                                    "if": {"$gt": ["$cmo_9_indicator.weight", 0]},
+                                    "if": {
+                                        "$and": [
+                                            {"$gt": ["$cmo_9_indicator.weight", 0]},
+                                            {"$ifNull": ["$cmo_9_indicator.weight", False]}
+                                        ]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },
                             {
                                 "$cond": {
-                                    "if": {"$gt": ["$ema_10_indicator.weight", 0]},
+                                    "if": {
+                                        "$and": [
+                                            {"$gt": ["$ema_10_indicator.weight", 0]},
+                                            {"$ifNull": ["$ema_10_indicator.weight", False]}
+                                        ]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },
                             {
                                 "$cond": {
-                                    "if": {"$gt": ["$ema_20_indicator.weight", 0]},
+                                    "if": {
+                                        "$and": [
+                                            {"$gt": ["$ema_20_indicator.weight", 0]},
+                                            {"$ifNull": ["$ema_20_indicator.weight", False]}
+                                        ]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },
                             {
                                 "$cond": {
-                                    "if": {"$gt": ["$ema_50_indicator.weight", 0]},
+                                    "if": {
+                                        "$and": [
+                                            {"$gt": ["$ema_50_indicator.weight", 0]},
+                                            {"$ifNull": ["$ema_50_indicator.weight", False]}
+                                        ]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },
                             {
                                 "$cond": {
-                                    "if": {"$gt": ["$ema_100_indicator.weight", 0]},
+                                    "if": {
+                                        "$and": [
+                                            {"$gt": ["$ema_100_indicator.weight", 0]},
+                                            {"$ifNull": ["$ema_100_indicator.weight", False]}
+                                        ]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },
                             {
                                 "$cond": {
-                                    "if": {"$gt": ["$rsi_indicator.weight", 0]},
+                                    "if": {
+                                        "$and": [
+                                            {"$gt": ["$rsi_indicator.weight", 0]},
+                                            {"$ifNull": ["$rsi_indicator.weight", False]}
+                                        ]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },
                             {
                                 "$cond": {
-                                    "if": {"$gt": ["$rsi_stoch_indicator.weight", 0]},
+                                    "if": {
+                                        "$and": [
+                                            {"$gt": ["$rsi_stoch_indicator.weight", 0]},
+                                            {"$ifNull": ["$rsi_stoch_indicator.weight", False]}
+                                        ]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },
@@ -839,49 +1133,89 @@ class mongoYfinance:
                         "$sum": [
                             {
                                 "$cond": {
-                                    "if": {"$lt": ["$macd_indicator.weight", 0]},
+                                    "if": {
+                                        "$and": [
+                                            {"$lt": ["$macd_indicator.weight", 0]},
+                                            {"$ifNull": ["$macd_indicator.weight", False]}
+                                        ]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },
                             {
                                 "$cond": {
-                                    "if": {"$lt": ["$cmo_9_indicator.weight", 0]},
+                                    "if": {
+                                        "$and": [
+                                            {"$lt": ["$cmo_9_indicator.weight", 0]},
+                                            {"$ifNull": ["$cmo_9_indicator.weight", False]}
+                                        ]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },
                             {
                                 "$cond": {
-                                    "if": {"$lt": ["$ema_10_indicator.weight", 0]},
+                                    "if": {
+                                        "$and": [
+                                            {"$lt": ["$ema_10_indicator.weight", 0]},
+                                            {"$ifNull": ["$ema_10_indicator.weight", False]}
+                                        ]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },
                             {
                                 "$cond": {
-                                    "if": {"$lt": ["$ema_20_indicator.weight", 0]},
+                                    "if": {
+                                        "$and": [
+                                            {"$lt": ["$ema_20_indicator.weight", 0]},
+                                            {"$ifNull": ["$ema_20_indicator.weight", False]}
+                                        ]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },
                             {
                                 "$cond": {
-                                    "if": {"$lt": ["$ema_50_indicator.weight", 0]},
+                                    "if": {
+                                        "$and": [
+                                            {"$lt": ["$ema_50_indicator.weight", 0]},
+                                            {"$ifNull": ["$ema_50_indicator.weight", False]}
+                                        ]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },
                             {
                                 "$cond": {
-                                    "if": {"$lt": ["$ema_100_indicator.weight", 0]},
+                                    "if": {
+                                        "$and": [
+                                            {"$lt": ["$ema_100_indicator.weight", 0]},
+                                            {"$ifNull": ["$ema_100_indicator.weight", False]}
+                                        ]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },
                             {
                                 "$cond": {
-                                    "if": {"$lt": ["$rsi_indicator.weight", 0]},
+                                    "if": {
+                                        "$and": [
+                                            {"$lt": ["$rsi_indicator.weight", 0]},
+                                            {"$ifNull": ["$rsi_indicator.weight", False]}
+                                        ]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },
                             {
                                 "$cond": {
-                                    "if": {"$lt": ["$rsi_stoch_indicator.weight", 0]},
+                                    "if": {
+                                        "$and": [
+                                            {"$lt": ["$rsi_stoch_indicator.weight", 0]},
+                                            {"$ifNull": ["$rsi_stoch_indicator.weight", False]}
+                                        ]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },
@@ -891,49 +1225,65 @@ class mongoYfinance:
                         "$sum": [
                             {
                                 "$cond": {
-                                    "if": {"$eq": ["$macd_indicator.weight", 0]},
+                                    "if": {
+                                        "$eq": ["$macd_indicator.weight", 0]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },
                             {
                                 "$cond": {
-                                    "if": {"$eq": ["$cmo_9_indicator.weight", 0]},
+                                    "if": {
+                                        "$eq": ["$cmo_9_indicator.weight", 0]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },
                             {
                                 "$cond": {
-                                    "if": {"$eq": ["$ema_10_indicator.weight", 0]},
+                                    "if": {
+                                        "$eq": ["$ema_10_indicator.weight", 0]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },
                             {
                                 "$cond": {
-                                    "if": {"$eq": ["$ema_20_indicator.weight", 0]},
+                                    "if": {
+                                        "$eq": ["$ema_20_indicator.weight", 0]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },
                             {
                                 "$cond": {
-                                    "if": {"$eq": ["$ema_50_indicator.weight", 0]},
+                                    "if": {
+                                        "$eq": ["$ema_50_indicator.weight", 0]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },
                             {
                                 "$cond": {
-                                    "if": {"$eq": ["$ema_100_indicator.weight", 0]},
+                                    "if": {
+                                        "$eq": ["$ema_100_indicator.weight", 0]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },
                             {
                                 "$cond": {
-                                    "if": {"$eq": ["$rsi_indicator.weight", 0]},
+                                    "if": {
+                                        "$eq": ["$rsi_indicator.weight", 0]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },
                             {
                                 "$cond": {
-                                    "if": {"$eq": ["$rsi_stoch_indicator.weight", 0]},
+                                    "if": {
+                                        "$eq": ["$rsi_stoch_indicator.weight", 0]
+                                    },
                                     "then": 1, "else": 0
                                 }
                             },

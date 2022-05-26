@@ -1,13 +1,10 @@
 from flask import Flask, request, render_template, jsonify
-import yfinance as yf
 from mongoYfinance import *
-import pandas as pd
-import sys
 
 # instantiate the Flask app.
 app = Flask(__name__)
 yfdb = mongoYfinance("tccanaliseacoes", "oiDHq8LUtoKUkyIA",
-                         "cluster0.qxqqc.mongodb.net/myFirstDatabase?retryWrites=true&w=majority")
+                     "cluster0.qxqqc.mongodb.net/myFirstDatabase?retryWrites=true&w=majority")
 
 # API Route for pulling the stock quote
 @app.route("/quote")
@@ -64,11 +61,10 @@ def display_history_db():
 def display_indicators_db():
     # get the query string parameters
     symbol = request.args.get('symbol', default="AAPL")
-    # period = request.args.get('period', default="7d")
-    # interval = request.args.get('interval', default="1m")
+    interval = request.args.get('interval', default="5m")
 
     # use the quote to pull the historical data from Yahoo finance stored in MongoDB
-    hist = yfdb.getIndicators(symbol)
+    hist = yfdb.getIndicators(symbol, interval)
     # convert the historical data to JSON
     # data = json.dumps(hist, indent=4, sort_keys=True, default=str)
     data = jsonify(hist)
@@ -149,4 +145,3 @@ if __name__ == "__main__":
     # yfdb = mongoYfinance("tccanaliseacoes", "oiDHq8LUtoKUkyIA", "cluster0.qxqqc.mongodb.net/myFirstDatabase?retryWrites=true&w=majority")
     # print(type(yfdb.getTicker("BTC-USD")))
     app.run(debug=True)
-    # yfdb.getIndicators("NUBR33.SA")
