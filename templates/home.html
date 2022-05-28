@@ -43,7 +43,7 @@
                     <span class="navbar-toggler-icon"></span>
                   </button>
                   <div class="title mx-auto">
-                    <h4 class="currentSymbolName d-inline">NUBANK</h4>
+                    <h4 class="currentSymbolName d-inline"></h4>
                     <div class="spinner-grow spinner-grow-sm loadingChart" style="display: none;" role="status">
                       <span class="sr-only">Carregando...</span>
                     </div>
@@ -51,6 +51,49 @@
                 </nav>
               </div>
               <div id="chart_container"></div>
+              <div id="interval-close" class="p-3 float-right">
+                <h6 class="text-right">Intervalo</h6>
+                <nav aria-label="Intervalo">
+                  <ul class="pagination">
+                    <li class="page-item">
+                      <span class="page-link" data-interval="1m" onclick="site.getIntervalChart(this)">1m</span>
+                    </li>
+                    <li class="page-item active">
+                      <span class="page-link" data-interval="5m" onclick="site.getIntervalChart(this)">5m <span class="sr-only">(current)</span></span>
+                    </li>
+                    <li class="page-item">
+                      <span class="page-link" data-interval="15m" onclick="site.getIntervalChart(this)">15m</span>
+                    </li>
+                    <li class="page-item">
+                      <span class="page-link" data-interval="30m" onclick="site.getIntervalChart(this)">30m</span>
+                    </li>
+                    <li class="page-item">
+                      <span class="page-link" data-interval="1hr" onclick="site.getIntervalChart(this)">1hr</span>
+                    </li>
+                    <li class="page-item">
+                      <span class="page-link" data-interval="2hr" onclick="site.getIntervalChart(this)">2hr</span>
+                    </li>
+                    <li class="page-item">
+                      <span class="page-link" data-interval="4hr" onclick="site.getIntervalChart(this)">4hr</span>
+                    </li>
+                    <li class="page-item">
+                      <span class="page-link" data-interval="12hr" onclick="site.getIntervalChart(this)">12hr</span>
+                    </li>
+                    <li class="page-item">
+                      <span class="page-link" data-interval="1d" onclick="site.getIntervalChart(this)">1d</span>
+                    </li>
+                    <li class="page-item">
+                      <span class="page-link" data-interval="5d" onclick="site.getIntervalChart(this)">5d</span>
+                    </li>
+                    <li class="page-item">
+                      <span class="page-link" data-interval="1wk" onclick="site.getIntervalChart(this)">1S</span>
+                    </li>
+                    <li class="page-item">
+                      <span class="page-link" data-interval="1mo" onclick="site.getIntervalChart(this)">1M</span>
+                    </li>
+                  </ul>
+                </nav>
+              </div>
               <div id="indicators"></div>
             </main>
           </div>

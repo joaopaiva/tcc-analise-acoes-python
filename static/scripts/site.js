@@ -1,6 +1,9 @@
 var Site = function() {
-    //	this.symbol = "PETR4.SA";
+    this.symbol = this.defaultSymbol;
+    this.interval = "5m";
 };
+
+Site.prototype.defaultSymbol = "PETBR4.SA";
 
 Site.prototype.Init = function() {
     // store the site context.
@@ -45,7 +48,12 @@ Site.prototype.LoadStoredSymbols = function(reloadChart = false) {
             var symbolList = "";
 
             for (var i = 0, l = Object.keys(data).length; i < l; i++) {
-                symbolList += '<li><span class="getSymbol" onclick="site.getSymbolChart(this)" data-id="' + data[i].sym + '">' + data[i].shortName + '</span><span data-toggle="modal" data-id="' + data[i].sym + '" data-shortname="' + data[i].shortName + '" data-target="#modalAlertRemoveSymbol" class="removeItem">x</span></li>';
+                symbolList += '<li>';
+                symbolList += '<span class="getSymbol" onclick="site.getSymbolChart(this)" data-id="' +
+                    data[i].sym + '">' + data[i].shortName + '</span>';
+                symbolList += '<span data-toggle="modal" data-id="' + data[i].sym + '" data-shortname="' +
+                    data[i].shortName + '" data-target="#modalAlertRemoveSymbol" class="removeItem">x</span>';
+                symbolList += '</li>';
             }
 
             jQuery("ul.symbolList").html(symbolList);
@@ -54,7 +62,9 @@ Site.prototype.LoadStoredSymbols = function(reloadChart = false) {
 
             context.shortName = data[0].shortName;
             context.symbol = data[0].sym;
-            that.symbol = data[0].sym;
+
+            if(that.symbol === that.defaultSymbol)
+                that.symbol = data[0].sym;
 
             // call the request to load the chart and pass the data context with it.
             if (reloadChart)
@@ -77,7 +87,6 @@ Site.prototype.RemoveSymbol = function(symbolId) {
         method: "GET",
         cache: false
     }).done(function(data) {
-        //            jQuery( "ul.symbolList" ).html(symbolList);
 
         var context = {};
 
@@ -90,115 +99,7 @@ Site.prototype.RemoveSymbol = function(symbolId) {
     });
 }
 
-Site.prototype.exponentialMovingAverage = function(data, sma, window = 5, last = false) {
-
-    var dates = Object.keys(data);
-    var prices = Object.values(data);
-
-    if (!prices || prices.length < window) {
-        return [];
-    }
-
-    let index = window - 1;
-    let previousEmaIndex = 0;
-    const length = prices.length;
-    const smoothingFactor = 2 / (window + 1);
-
-    exponentialMovingAverages = sma;
-    exponentialMovingAveragesWithDates = [];
-
-    while (++index < length) {
-        const value = prices[index];
-        const previousEma = exponentialMovingAverages[previousEmaIndex++][1];
-        const currentEma = (value - previousEma) * smoothingFactor + previousEma;
-        exponentialMovingAverages.push(currentEma);
-        exponentialMovingAveragesWithDates.push([parseInt(dates[index]), currentEma])
-    }
-
-    return exponentialMovingAveragesWithDates;
-}
-
-Site.prototype.simpleMovingAverage = function(data, window = 5, last = false) {
-
-    // console.log(Object.keys(prices));
-
-    var dates = Object.keys(data);
-    var prices = Object.values(data);
-
-    if (!prices || prices.length < window) {
-        return [];
-    }
-
-    let index = window - 1;
-    const length = prices.length + 1;
-
-    const simpleMovingAverages = {};
-
-    while (++index < length) {
-        const windowPriceSlice = prices.slice(index - window, index);
-        const windowDateSlice = dates.slice(index - window, index);
-        const sum = windowPriceSlice.reduce((prev, curr) => prev + curr, 0);
-        simpleMovingAverages[parseInt(windowDateSlice.slice(-1))] = sum / window;
-    }
-
-    if (last == true)
-        return simpleMovingAverages[Object.keys(simpleMovingAverages)[Object.keys(simpleMovingAverages).length - 1]]
-
-    return simpleMovingAverages;
-}
-
-// https://www.highcharts.com/forum/viewtopic.php?t=41321#p144259
-Site.prototype.checkLineIntersection = function(a1, a2) {
-    if (a1 && a2) {
-        var saX = a2.x - a1.x,
-            saY = a2.high - a1.high,
-            sbY = a2.low - a1.low,
-            sabX = a1.plotX - a2.plotX,
-            sabY = a1.high - a1.low,
-            u,
-            t;
-
-
-        u = (-saY * sabX + saX * sabY) / (-saX * saY + saX * sbY);
-        t = (saX * sabY - sbY * sabX) / (-saX * saY + saX * sbY);
-
-        if (u >= 0 && u <= 1 && t >= 0 && t <= 1) {
-            return {
-                plotX: a1.x + (t * saX),
-                plotY: a1.high + (t * saY)
-            };
-        }
-    }
-
-    return false;
-}
-
-//Site.prototype.GetQuote = function(symbol = this.symbol){
-//	// store the site context.
-//    //	var that = this;
-//
-//	// pull the HTTP REquest
-//	$.ajax({
-//		url: "/quote?symbol=" + symbol,
-//		method: "GET",
-//		cache: false
-//	}).done(function(data) {
-//
-//		// set up a data context for just what we need.
-//		var context = {};
-//		context.shortName = data.shortName;
-//		context.symbol = data.sym;
-////		context.price = data.ask;
-//
-////		if(data.quoteType="MUTUALFUND"){
-////			context.price = data.previousClose
-////		}
-//
-//		// call the request to load the chart and pass the data context with it.
-//		that.LoadChart(context);
-//	});
-//};
-Site.prototype.GetQuote = function(symbol = this.symbol) {
+Site.prototype.GetQuote = function() {
 
     jQuery(".symbolListDiv .loadingChart").addClass("d-inline-block");
 
@@ -207,20 +108,13 @@ Site.prototype.GetQuote = function(symbol = this.symbol) {
 
     // pull the HTTP REquest
     $.ajax({
-        url: "/get?symbol=" + symbol,
+        url: "/get?symbol=" + that.symbol,
         method: "GET",
         cache: false
     }).done(function(data) {
 
         var data = JSON.parse(data);
         if (Object.keys(data).length > 0) {
-            //            var symbolList = "";
-
-            //            for (var i = 0, l = Object.keys(data).length; i < l; i++) {
-            //                symbolList += '<li>' + data[i].shortName + '<span data-toggle="modal" data-id="' + data[i].sym + '" data-shortname="' + data[i].shortName + '" data-target="#modalAlertRemoveSymbol" class="removeItem">x</span></li>';
-            //            }
-
-            //            jQuery( "ul.symbolList" ).html(symbolList);
 
             var context = {};
 
@@ -230,20 +124,9 @@ Site.prototype.GetQuote = function(symbol = this.symbol) {
 
             // call the request to load the chart and pass the data context with it.
             that.LoadChart(context);
-            //            jQuery( ".symbolListDiv" ).show();
+
         }
-        //		// set up a data context for just what we need.
-        //		var context = {};
-        //		context.shortName = data.shortName;
-        //		context.symbol = data.sym;
-        ////		context.price = data.ask;
-        //
-        ////		if(data.quoteType="MUTUALFUND"){
-        ////			context.price = data.previousClose
-        ////		}
-        //
-        //		// call the request to load the chart and pass the data context with it.
-        //		that.LoadChart(context);
+
     });
 };
 
@@ -252,10 +135,17 @@ Site.prototype.SubmitForm = function() {
     this.GetQuote();
 }
 
+Site.prototype.getIntervalChart = function(e) {
+    this.interval = jQuery(e).attr("data-interval");
+    console.log(this.interval);
+    console.log(this.symbol);
+    this.GetQuote();
+}
 Site.prototype.getSymbolChart = function(e) {
-    symbol = jQuery(e).attr("data-id");
-    this.symbol = symbol;
-    this.GetQuote(symbol);
+    this.symbol = jQuery(e).attr("data-id");
+    console.log(this.interval);
+    console.log(this.symbol);
+    this.GetQuote(this.symbol);
 }
 
 Site.prototype.LoadChart = function(quote) {
@@ -263,78 +153,15 @@ Site.prototype.LoadChart = function(quote) {
     var that = this;
     $.ajax({
         //		url: "/historydb?symbol=" + that.symbol,
-        url: "/indicators?symbol=" + that.symbol,
+        url: "/indicators?symbol=" + that.symbol + "&interval=" + that.interval,
         method: "GET",
         cache: false
     }).done(function(data) {
 
-        //		console.log('Média Movel Simples (10)', that.simpleMovingAverage(parsedDataClose, 10, true));
-        //		console.log('Média Movel Simples (20)', that.simpleMovingAverage(JSON.parse(data).Close, 20, true));
-        //		console.log('Média Movel Simples (30)', that.simpleMovingAverage(JSON.parse(data).Close, 30, true));
-        //		console.log('Média Movel Simples (40)', that.simpleMovingAverage(JSON.parse(data).Close, 40, true));
-        //		console.log('Média Movel Simples (50)', that.simpleMovingAverage(JSON.parse(data).Close, 50, true));
-        //		console.log('Média Movel Simples (100)', that.simpleMovingAverage(JSON.parse(data).Close, 100, true));
-        //		console.log('Média Movel Simples (200)', that.simpleMovingAverage(JSON.parse(data).Close, 200, true));
-        //		that.RenderChart(JSON.parse(data), quote);
+        console.log(that.symbol);
         that.RenderChart(data, quote);
         var lastElementData = data[Object.keys(data)[Object.keys(data).length - 1]]
         that.RenderIndicators(lastElementData);
-        //
-        //		sma50 = [];
-        //		Object.entries(that.simpleMovingAverage(JSON.parse(data).Close, 50, false)).forEach(([key, value]) => {
-        //            sma50.push([parseInt(key), value]);
-        //        });
-        //        sma100 = [];
-        //		Object.entries(that.simpleMovingAverage(JSON.parse(data).Close, 100, false)).forEach(([key, value]) => {
-        //            sma100.push([parseInt(key), value]);
-        //        });
-        //        sma200 = [];
-        //		Object.entries(that.simpleMovingAverage(JSON.parse(data).Close, 200, false)).forEach(([key, value]) => {
-        //            sma200.push([parseInt(key), value]);
-        //        });
-        //
-        //        ema50 = that.exponentialMovingAverage(JSON.parse(data).Close, sma50.slice(), 50, false);
-        //        ema100 = that.exponentialMovingAverage(JSON.parse(data).Close, sma100.slice(), 100, false);
-        //        ema200 = that.exponentialMovingAverage(JSON.parse(data).Close, sma200.slice(), 200, false);
-        //
-        //
-        //
-        //        console.log(sma50);
-        //        console.log(ema50);
-
-        //		that.chart.addSeries({
-        //		    id:   'sma50',
-        //            name: 'Média Movel Simples (50)',
-        //            data:  sma50
-        //        });
-        //		that.chart.addSeries({
-        //		    id:   'sma100',
-        //            name: 'Média Movel Simples (100)',
-        //            data:  sma100
-        //        });
-        //		that.chart.addSeries({
-        //		    id:   'sma200',
-        //            name: 'Média Movel Simples (200)',
-        //            data:  sma200
-        //        });
-
-        //        that.chart.addSeries({
-        //		    id:   'ema50',
-        //            name: 'Média Movel Exponencial (50)',
-        //            data:  ema50
-        //        });
-        //
-        //        that.chart.addSeries({
-        //		    id:   'ema100',
-        //            name: 'Média Movel Exponencial (100)',
-        //            data:  ema100
-        //        });
-        //
-        //        that.chart.addSeries({
-        //		    id:   'ema200',
-        //            name: 'Média Movel Exponencial (200)',
-        //            data:  ema200
-        //        });
 
         console.log(series = that.chart.series)
         that.LoadStoredSymbols(false);
@@ -344,64 +171,6 @@ Site.prototype.LoadChart = function(quote) {
 
 Site.prototype.RenderIndicators = function(data) {
     if (Object.keys(data).length > 0) {
-
-        //                                "$macd_indicator.weight",
-        //                                "$cmo_9_indicator.weight",
-        //                                "$ema_10_indicator.weight",
-        //                                "$ema_20_indicator.weight",
-        //                                "$ema_50_indicator.weight",
-        //                                "$ema_100_indicator.weight",
-        //                                "$rsi_indicator.weight",
-        //                                "$rsi_stoch_indicator.weight",
-//        var indicators = [];
-//
-//        var macd_indicator = [];
-//        macd_indicator["name"] = "Nível MACD (12, 26)";
-//        macd_indicator["value"] = data.macdSignal;
-//        macd_indicator["recommendation"] = data.macd_indicator.recommendation;
-//        indicators.push(macd_indicator);
-//
-//        var cmo_9_indicator = [];
-//        cmo_9_indicator["name"] = "Oscilador de Momento de Chande (9)";
-//        cmo_9_indicator["value"] = data.cmo_9;
-//        cmo_9_indicator["recommendation"] = data.cmo_9_indicator.recommendation;
-//        indicators.push(cmo_9_indicator);
-//
-//        var ema_10_indicator = [];
-//        ema_10_indicator["name"] = "Média Móvel Exponencial (10)";
-//        ema_10_indicator["value"] = data.ema_10;
-//        ema_10_indicator["recommendation"] = data.ema_10_indicator.recommendation;
-//        indicators.push(ema_10_indicator);
-//
-//        var ema_20_indicator = [];
-//        ema_20_indicator["name"] = "Média Móvel Exponencial (20)";
-//        ema_20_indicator["value"] = data.ema_20;
-//        ema_20_indicator["recommendation"] = data.ema_20_indicator.recommendation;
-//        indicators.push(ema_20_indicator);
-//
-//        var ema_50_indicator = [];
-//        ema_50_indicator["name"] = "Média Móvel Exponencial (50)";
-//        ema_50_indicator["value"] = data.ema_50;
-//        ema_50_indicator["recommendation"] = data.ema_50_indicator.recommendation;
-//        indicators.push(ema_50_indicator);
-//
-//        var ema_100_indicator = [];
-//        ema_100_indicator["name"] = "Média Móvel Exponencial (100)";
-//        ema_100_indicator["value"] = data.ema_100;
-//        ema_100_indicator["recommendation"] = data.ema_100_indicator.recommendation;
-//        indicators.push(ema_100_indicator);
-//
-//        var rsi_indicator = [];
-//        rsi_indicator["name"] = "Índice de Força Relativa (14)";
-//        rsi_indicator["value"] = data.rsi;
-//        rsi_indicator["recommendation"] = data.rsi_indicator.recommendation;
-//        indicators.push(rsi_indicator);
-//
-//        var rsi_stoch_indicator = [];
-//        rsi_stoch_indicator["name"] = "IFR Estocástico";
-//        rsi_stoch_indicator["value"] = data.rsi_stoch;
-//        rsi_stoch_indicator["recommendation"] = data.rsi_stoch_indicator.recommendation;
-//        indicators.push(rsi_stoch_indicator);
 
         var indicators_tendency = [];
         var indicators = [];

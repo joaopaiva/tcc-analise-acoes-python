@@ -372,7 +372,7 @@ class mongoYfinance:
                         "Datetime": {
                             "$subtract": [
                                 {"$toLong": "$_id.Datetime"},
-                                {"$mod": [{"$toLong": "$_id.Datetime"}, 1000 * intervalInMinutes]}
+                                {"$mod": [{"$toLong": "$_id.Datetime"}, 1000 * 60 * intervalInMinutes]}
                             ]
                         }
                     },
