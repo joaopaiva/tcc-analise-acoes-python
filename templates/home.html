@@ -51,10 +51,10 @@
                 </nav>
               </div>
               <div id="chart_container"></div>
-              <div id="interval-close" class="p-3 float-right">
-                <h6 class="text-right">Intervalo</h6>
+              <div id="interval-close" class="p-3">
                 <nav aria-label="Intervalo">
-                  <ul class="pagination">
+                  <h6 class="float-right p-2">Intervalo</h6>
+                  <ul class="pagination float">
                     <li class="page-item">
                       <span class="page-link" data-interval="1m" onclick="site.getIntervalChart(this)">1m</span>
                     </li>
@@ -68,16 +68,16 @@
                       <span class="page-link" data-interval="30m" onclick="site.getIntervalChart(this)">30m</span>
                     </li>
                     <li class="page-item">
-                      <span class="page-link" data-interval="1hr" onclick="site.getIntervalChart(this)">1hr</span>
+                      <span class="page-link" data-interval="1h" onclick="site.getIntervalChart(this)">1h</span>
                     </li>
                     <li class="page-item">
-                      <span class="page-link" data-interval="2hr" onclick="site.getIntervalChart(this)">2hr</span>
+                      <span class="page-link" data-interval="2h" onclick="site.getIntervalChart(this)">2h</span>
                     </li>
                     <li class="page-item">
-                      <span class="page-link" data-interval="4hr" onclick="site.getIntervalChart(this)">4hr</span>
+                      <span class="page-link" data-interval="4h" onclick="site.getIntervalChart(this)">4h</span>
                     </li>
                     <li class="page-item">
-                      <span class="page-link" data-interval="12hr" onclick="site.getIntervalChart(this)">12hr</span>
+                      <span class="page-link" data-interval="12h" onclick="site.getIntervalChart(this)">12h</span>
                     </li>
                     <li class="page-item">
                       <span class="page-link" data-interval="1d" onclick="site.getIntervalChart(this)">1d</span>
@@ -93,6 +93,14 @@
                     </li>
                   </ul>
                 </nav>
+              </div>
+              <div id="tendency-container" style="height: 250px;"></div>
+              <div class="container indicators-tendency-up-down">
+                <div class="row">
+                  <div class="col-md-4 indicators-down">Tendência de Baixa: <span class="value">-</span></div>
+                  <div class="col-md-4 indicators-neutral">Tendência Neutra: <span class="value">-</span></div>
+                  <div class="col-md-4 indicators-up">Tendência de Alta: <span class="value">-</span></div>
+                </div>
               </div>
               <div id="indicators"></div>
             </main>
@@ -135,6 +143,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.1/js/bootstrap.min.js" integrity="sha512-UR25UO94eTnCVwjbXozyeVd6ZqpaAE9naiEUBK/A+QDbfSTQFhPGj5lOR6d8tsgbBk84Ggb5A3EkjsOgPRPcKA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script src="https://code.highcharts.com/stock/highstock.js"></script>
+    <script src="https://code.highcharts.com/highcharts-more.js"></script>
+    <script src="https://code.highcharts.com/modules/solid-gauge.js"></script>
     <script src="https://code.highcharts.com/stock/modules/data.js"></script>
     <script src="https://code.highcharts.com/stock/modules/exporting.js"></script>
     <script src="https://code.highcharts.com/stock/modules/export-data.js"></script>

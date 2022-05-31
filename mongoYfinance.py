@@ -232,6 +232,8 @@ class mongoYfinance:
             # set index to column in pandas DataFrame
             data.reset_index(inplace=True)
 
+            data.dropna(inplace=True)
+
             self.sprint(data)
 
             if "Datetime" in data:
@@ -239,46 +241,82 @@ class mongoYfinance:
                 tickersNotRounded = data[data['Datetime'].dt.second > 0].index
                 data.drop(tickersNotRounded, inplace=True)
 
+                if len(data) > 0:
+                    # self.sprint("Adding '[" + startDate + ", " + endDate + "]' data for symbol '"
+                    #             + symbol['_id']['sym'] + "' (" + str(len(data)) + " entries)")
+                    dictData = data.to_dict(orient='records')
+
+                    for data in dictData:
+                        data["_id"] = {"sym": symbol['_id']['sym'], "Datetime": data["Datetime"]}
+                        data.pop('Datetime', None)
+
+                    ids = [dt.pop("_id") for dt in dictData]
+
+                    operations = [UpdateOne({"_id": idn}, {'$set': dt}, upsert=True) for idn, dt in
+                                  zip(ids, dictData)]
+
+                    self.yfdb.timeline.bulk_write(operations)
+
+            if "Date" in data:
+                if len(data) > 0:
+                    # self.sprint("Adding '[" + startDate + ", " + endDate + "]' data for symbol '"
+                    #             + symbol['_id']['sym'] + "' (" + str(len(data)) + " entries)")
+                    dictData = data.to_dict(orient='records')
+
+                    for data in dictData:
+                        date = datetime.combine(data["Date"], datetime.min.time())
+                        data["_id"] = {"sym": symbol['_id']['sym'], "Datetime": date}
+                        data.pop('Date', None)
+
+                    self.sprint(data)
+
+                    ids = [dt.pop("_id") for dt in dictData]
+
+                    operations = [UpdateOne({"_id": idn}, {'$set': dt}, upsert=True) for idn, dt in
+                                  zip(ids, dictData)]
+
+                    self.yfdb.timeline.bulk_write(operations)
+
                 # update already exists in database
-                if lastTicker:
-                    storedData = timezone.localize(self.getLastTicker(symbol['sym']))
-                    apiData = data["Datetime"].iat[-1].to_pydatetime().astimezone(timezone)
-
-                    print(apiData.timestamp() - storedData.timestamp())
-
-                    if len(data) > 0 and apiData.timestamp() - storedData.timestamp() > 120:
-                        # self.sprint("Adding '[" + startDate + ", " + endDate + "]' data for symbol '"
-                        #             + symbol['sym'] + "' (" + str(len(data)) + " entries)")
-                        dictData = data.to_dict(orient='records')
-
-                        for data in dictData:
-                            data["_id"] = {"sym": symbol['_id']['sym'], "Datetime": data["Datetime"]}
-                            data.pop('Datetime', None)
-
-                        ids = [dt.pop("_id") for dt in dictData]
-
-                        operations = [UpdateOne({"_id": idn}, {'$set': dt}, upsert=True) for idn, dt in
-                                      zip(ids, dictData)]
-
-                        self.yfdb.timeline.bulk_write(operations)
-
-                # insert new data
-                else:
-                    if len(data) > 0:
-                        # self.sprint("Adding '[" + startDate + ", " + endDate + "]' data for symbol '"
-                        #             + symbol['_id']['sym'] + "' (" + str(len(data)) + " entries)")
-                        dictData = data.to_dict(orient='records')
-
-                        for data in dictData:
-                            data["_id"] = {"sym": symbol['_id']['sym'], "Datetime": data["Datetime"]}
-                            data.pop('Datetime', None)
-
-                        ids = [dt.pop("_id") for dt in dictData]
-
-                        operations = [UpdateOne({"_id": idn}, {'$set': dt}, upsert=True) for idn, dt in
-                                      zip(ids, dictData)]
-
-                        self.yfdb.timeline.bulk_write(operations)
+                # if lastTicker:
+                #     # storedData = timezone.localize(self.getLastTicker(symbol['sym']))
+                #     # apiData = data["Datetime"].iat[-1].to_pydatetime().astimezone(timezone)
+                #
+                #     print(apiData.timestamp() - storedData.timestamp())
+                #
+                #     if len(data) > 0 and apiData.timestamp() - storedData.timestamp() > 120:
+                #         # self.sprint("Adding '[" + startDate + ", " + endDate + "]' data for symbol '"
+                #         #             + symbol['sym'] + "' (" + str(len(data)) + " entries)")
+                #         dictData = data.to_dict(orient='records')
+                #
+                #         for data in dictData:
+                #             data["_id"] = {"sym": symbol['_id']['sym'], "Datetime": data["Datetime"]}
+                #             data.pop('Datetime', None)
+                #
+                #         ids = [dt.pop("_id") for dt in dictData]
+                #
+                #         operations = [UpdateOne({"_id": idn}, {'$set': dt}, upsert=True) for idn, dt in
+                #                       zip(ids, dictData)]
+                #
+                #         self.yfdb.timeline.bulk_write(operations)
+                #
+                # # insert new data
+                # else:
+                #     if len(data) > 0:
+                #         # self.sprint("Adding '[" + startDate + ", " + endDate + "]' data for symbol '"
+                #         #             + symbol['_id']['sym'] + "' (" + str(len(data)) + " entries)")
+                #         dictData = data.to_dict(orient='records')
+                #
+                #         for data in dictData:
+                #             data["_id"] = {"sym": symbol['_id']['sym'], "Datetime": data["Datetime"]}
+                #             data.pop('Datetime', None)
+                #
+                #         ids = [dt.pop("_id") for dt in dictData]
+                #
+                #         operations = [UpdateOne({"_id": idn}, {'$set': dt}, upsert=True) for idn, dt in
+                #                       zip(ids, dictData)]
+                #
+                #         self.yfdb.timeline.bulk_write(operations)
 
     def getTicker(self, symbol):
         # self.add(symbol)
@@ -322,13 +360,13 @@ class mongoYfinance:
             # case 'period':
             #     return period in minutes, interval in days to be fetched
             case '1m':
-                return 60/60, 6
+                return 1, 6
             case '5m':
-                return 60/12, 59
+                return 5, 59
             case '15m':
-                return 60/4, 59
+                return 15, 59
             case '30m':
-                return 60/2, 59
+                return 30, 59
             case '1hr':
                 return 60, 300
             case '2hr':
@@ -346,18 +384,18 @@ class mongoYfinance:
             case '1mo':
                 return 30 * 24 * 60, 9000
             case _:
-                return 60/12, 59   # 5, 59 is the default case if x is not found
+                return 5, 59   # 5, 59 is the default case if x is not found
 
     # https://www.mongodb.com/developer/article/time-series-macd-rsi/
     def getIndicators(self, symbol, interval='5m'):
 
         intervalInMinutes, days = self.periodInterval(interval)
+        self.sprint(intervalInMinutes)
+        self.sprint(days)
+        self.sprint(1000 * 60 * intervalInMinutes)
 
         date = datetime.today() - timedelta(days=days)
         self.fetchInterval(date.strftime("%Y/%m/%d"), None, symbol, interval)
-        # self.add(symbol)
-        # self.update()
-        # self.fetchInterval(startDate, endDate=None, symbol=None, interval='1m')
 
         indicators = self.yfdb.timeline.aggregate([
             {

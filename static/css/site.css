@@ -108,6 +108,10 @@ ul.symbolList {
   margin: 0;
 }
 
+ul.symbolList .getSymbol {
+  cursor: pointer;
+}
+
 /* Style the list items */
 ul.symbolList li {
   border: 1px solid #ddd;
@@ -139,6 +143,14 @@ ul.symbolList li:hover {
 .symbolList .removeItem:hover {
   background: #ff2525;
   color: #fff;
+}
+
+#interval-close ul.pagination {
+  cursor: pointer;
+}
+
+#indicators .table {
+  cursor: default;
 }
 
 .modal-header {

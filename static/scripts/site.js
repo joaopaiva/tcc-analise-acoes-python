@@ -72,6 +72,7 @@ Site.prototype.LoadStoredSymbols = function(reloadChart = false) {
         } else {
             jQuery("#chart_container").html("");
             jQuery(".symbolListDiv").hide("");
+            jQuery("#indicators").hide("");
         }
     });
 }
@@ -136,6 +137,8 @@ Site.prototype.SubmitForm = function() {
 }
 
 Site.prototype.getIntervalChart = function(e) {
+    jQuery("#interval-close ul>li.active").removeClass("active");
+    jQuery(e).parent('li').addClass("active");
     this.interval = jQuery(e).attr("data-interval");
     console.log(this.interval);
     console.log(this.symbol);
@@ -157,8 +160,6 @@ Site.prototype.LoadChart = function(quote) {
         method: "GET",
         cache: false
     }).done(function(data) {
-
-        console.log(that.symbol);
         that.RenderChart(data, quote);
         var lastElementData = data[Object.keys(data)[Object.keys(data).length - 1]]
         that.RenderIndicators(lastElementData);
@@ -168,39 +169,60 @@ Site.prototype.LoadChart = function(quote) {
         //        console.log(simpleMovingAverageArray50);
     });
 };
+Site.prototype.IndicatorsTendency = function(indicators_recommendation) {
+
+    switch(indicators_recommendation){
+        case "Strong Buy":
+            return [100, "Alta Forte"];
+            break;
+
+        case "Buy":
+            return [80, "Alta"];
+            break;
+
+        case "Neutral":
+            return [50, "Neutra"];
+            break;
+
+        case "Sell":
+            return [30, "Baixa"];
+            break;
+
+        case "Strong Sell":
+            return [0, "Baixa Forte"];
+            break;
+    }
+}
+
+Site.prototype.IndicatorRecommendation = function(value, recommendation) {
+    switch (recommendation) {
+          case "Buy":
+            return [value, "Compra"];
+            break;
+          case "Sell":
+            return [value, "Venda"];
+            break;
+          case "Neutral":
+            return [value, "Neutro"];
+            break;
+          case null:
+            return ["-", "-"];
+            break;
+          default:
+            return [value, recommendation];
+    }
+}
 
 Site.prototype.RenderIndicators = function(data) {
+    var that = this;
     if (Object.keys(data).length > 0) {
-
         var indicators_tendency = [];
         var indicators = [];
 
-        indicators_tendency["up"] = data.indicators_up
-        indicators_tendency["down"] = data.indicators_down
-        indicators_tendency["neutral"] = data.indicators_neutral
-        indicators_tendency["recommendation"] = ""
-
-        switch(data.indicators_recommendation){
-            case "Strong Buy":
-                indicators_tendency["recommendation"] = "Tendência de Alta Forte";
-                break;
-
-            case "Buy":
-                indicators_tendency["recommendation"] = "Tendência de Alta";
-                break;
-
-            case "Neutral":
-                indicators_tendency["recommendation"] = "Tendência Neutra";
-                break;
-
-            case "Sell":
-                indicators_tendency["recommendation"] = "Tendência de Baixa";
-                break;
-
-            case "Strong Sell":
-                indicators_tendency["recommendation"] = "Tendência de Baixa Forte";
-                break;
-        }
+        indicators_tendency["up"] = data.indicators_up;
+        indicators_tendency["down"] = data.indicators_down;
+        indicators_tendency["neutral"] = data.indicators_neutral;
+        indicators_tendency["recommendation"] = that.IndicatorsTendency(data.indicators_recommendation);
 
 
         var macd_indicator = [];
@@ -279,8 +301,8 @@ Site.prototype.RenderIndicators = function(data) {
             indicator_row += '<tr>';
             indicator_row += '<th scope="row">' + i_indicator + '</th>';
             indicator_row += '<th>' + element["name"] + '</th>';
-            indicator_row += '<th>' + Math.round(element["value"] * 100) / 100 + '</th>';
-            indicator_row += '<th class="indicator-action">' + element["recommendation"]+ '</th>';
+            indicator_row += '<th>' + that.IndicatorRecommendation(Math.round(element["value"] * 100) / 100, element["recommendation"])[0] + '</th>';
+            indicator_row += '<th class="indicator-action">' + that.IndicatorRecommendation(element["value"], element["recommendation"])[1] + '</th>';
             indicator_row += '</tr>';
             indicators_table += indicator_row;
         })
@@ -288,12 +310,12 @@ Site.prototype.RenderIndicators = function(data) {
         indicators_table += '</table>';
 
         console.log(indicators_table)
-//        for (var i = 0, l = Object.keys(data).length; i < l; i++) {
-//
-//        }
-        //        data[i].sym
-
+        that.RenderTendencyChart(indicators_tendency["recommendation"][0], indicators_tendency["recommendation"][1]);
+        jQuery(".indicators-tendency-up-down .indicators-down span.value").html(indicators_tendency["down"]);
+        jQuery(".indicators-tendency-up-down .indicators-neutral span.value").html(indicators_tendency["neutral"]);
+        jQuery(".indicators-tendency-up-down .indicators-up span.value").html(indicators_tendency["up"]);
         jQuery("#indicators").html(indicators_table);
+        jQuery("#indicators").show();
 
 
         console.log(indicators)
@@ -325,10 +347,122 @@ Site.prototype.RenderIndicators = function(data) {
     } else {
         jQuery("#chart_container").html("");
         jQuery(".symbolListDiv").hide("");
+        jQuery("#indicators").hide("");
     }
 }
 
+Site.prototype.RenderTendencyChart = function (data, dataSubtitle){
+    var rawData = data;
+
+    var data = [];
+
+    start = Math.round(Math.floor(rawData / 10) * 10);
+
+    data.push(rawData);
+
+    for (i = start; i > 0; i -= 10) {
+          data.push({
+            y: i
+          });
+    }
+
+      Highcharts.chart('tendency-container', {
+            chart: {
+                  type: 'solidgauge',
+                  backgroundColor: '#333',
+                  marginTop: 10
+            },
+
+            title: {
+                 text: ''
+            },
+
+            subtitle: {
+                  text: dataSubtitle,
+                  style: {
+                    'font-size': '35px',
+                    'color': '#fff'
+                  },
+                  y: 200,
+                  zIndex: 7
+            },
+
+            tooltip: {
+                enabled: false
+            },
+
+        pane: [{
+              startAngle: -120,
+              endAngle: 120,
+              background: [{ // Track for Move
+                    outerRadius: '100%',
+                    innerRadius: '80%',
+                    backgroundColor: Highcharts.Color(Highcharts.getOptions().colors[0]).setOpacity(0.3).get(),
+                    borderWidth: 0,
+                    shape: 'arc'
+              }],
+              size: '120%',
+              center: ['50%', '65%']
+        }, {
+              startAngle: -120,
+              endAngle: 120,
+              size: '95%',
+              center: ['50%', '65%'],
+              background: []
+        }],
+
+        yAxis: [{
+          min: 0,
+          max: 100,
+          lineWidth: 2,
+          lineColor: 'white',
+          tickInterval: 10,
+          labels: {
+                enabled: false
+          },
+          minorTickWidth: 0,
+          tickLength: 50,
+          tickWidth: 5,
+          tickColor: 'white',
+          zIndex: 6,
+          stops: [
+                [0, '#fff'],
+                [0.101, '#0f0'],
+                [0.201, '#2d0'],
+                [0.301, '#4b0'],
+                [0.401, '#690'],
+                [0.501, '#870'],
+                [0.601, '#a50'],
+                [0.701, '#c30'],
+                [0.801, '#e10'],
+                [0.901, '#f03'],
+                [1, '#f06']
+              ]
+        }, {
+          linkedTo: 0,
+          pane: 1,
+          lineWidth: 5,
+          lineColor: 'white',
+          tickPositions: [],
+          zIndex: 6
+        }],
+
+        series: [{
+              animation: false,
+              dataLabels: {
+                    enabled: false
+              },
+              borderWidth: 0,
+              color: Highcharts.getOptions().colors[0],
+              radius: '100%',
+              innerRadius: '80%',
+              data: data
+            }]
+      });
+}
+
 Site.prototype.RenderChart = function(data, quote) {
+    var that = this;
     var priceData = [];
     var volumeData = [];
 
@@ -337,7 +471,8 @@ Site.prototype.RenderChart = function(data, quote) {
     jQuery("h4.currentSymbolName").text(title);
     console.log(data[0]._id.Datetime)
     // Map your data to desired format
-    var closeData = data.map(o => ([o._id.Datetime, o.price]));
+    var closeData = data.map(o => ({x: o._id.Datetime, y: o.price, indicator_down: o.indicators_down, indicator_neutral: o.indicators_neutral, indicator_up: o.indicators_up, indicators_tendency: that.IndicatorsTendency(o.indicators_recommendation)[1] }));
+    console.log(closeData);
     var volumeData = data.map(o => ([o._id.Datetime, o.volume]));
     //        var series = data.map(o => ({x: data._id.Datetime, data: [{y: data.price}]}));
     //                       json.map(o => ({name: o.name, data: [{y: Number(o.Salary)}]}));
@@ -410,8 +545,11 @@ Site.prototype.RenderChart = function(data, quote) {
                 data: closeData,
                 id: quote.shortName + '-price',
                 tooltip: {
-                    valueDecimals: 2
-                }
+                    valueDecimals: 2,
+                    pointFormat: '{series.name}: <b>{point.y}</b><br/><br/><b>Tendência</b>: {point.indicators_tendency}<br/>' +
+                    'Baixa: {point.indicator_down}<br/>Neutra: {point.indicator_neutral}<br/>Alta: {point.indicator_up}<br/>'
+                },
+                turboThreshold: 30000
             }, {
                 yAxis: 1,
                 type: 'macd',
@@ -429,7 +567,7 @@ Site.prototype.RenderChart = function(data, quote) {
                 name: quote.shortName + ' Volume',
                 data: volumeData,
                 yAxis: 2
-            }
+            },
         ],
 
         rangeSelector: {
