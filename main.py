@@ -5,7 +5,7 @@ from mongoYfinance import *
 
 # instantiate the Flask app.
 app = Flask(__name__)
-CORS(app, support_credentials=True'')
+CORS(app, support_credentials=True)
 yfdb = mongoYfinance("tccanaliseacoes", "oiDHq8LUtoKUkyIA",
                      "cluster0.qxqqc.mongodb.net/myFirstDatabase?retryWrites=true&w=majority")
 
