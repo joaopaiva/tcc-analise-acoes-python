@@ -587,7 +587,7 @@ Site.prototype.RenderChart = function(data, quote) {
                 }, {
                     type: 'hour',
                     count: 12,
-                    text: '1h'
+                    text: '12h'
                 }, {
                     type: 'day',
                     count: 1,
@@ -600,6 +600,11 @@ Site.prototype.RenderChart = function(data, quote) {
                     type: 'day',
                     count: 7,
                     text: '7d'
+                },
+                {
+                    type: 'day',
+                    count: 30,
+                    text: '30d'
                 }, {
                     type: 'all',
                     count: 1,
