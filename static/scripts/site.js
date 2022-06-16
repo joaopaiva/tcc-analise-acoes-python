@@ -3,7 +3,7 @@ var Site = function() {
     this.interval = "5m";
 };
 
-Site.prototype.defaultSymbol = "PETBR4.SA";
+Site.prototype.defaultSymbol = "PETR4.SA";
 
 Site.prototype.Init = function() {
     // store the site context.
@@ -71,8 +71,11 @@ Site.prototype.LoadStoredSymbols = function(reloadChart = false) {
                 that.LoadChart(context);
         } else {
             jQuery("#chart_container").html("");
-            jQuery(".symbolListDiv").hide("");
-            jQuery("#indicators").hide("");
+            jQuery(".symbolListDiv").hide();
+            jQuery("#indicators").hide();
+            jQuery("#interval-close").hide();
+            jQuery("#tendency-container").hide();
+            jQuery(".indicators-tendency-up-down").hide();
         }
     });
 }
@@ -133,6 +136,10 @@ Site.prototype.GetQuote = function() {
 
 Site.prototype.SubmitForm = function() {
     this.symbol = $("#symbol").val();
+    if(this.symbol == "") {
+        document.querySelectorAll('#symbol').forEach(e => e.reportValidity());
+        return;
+    }
     this.GetQuote();
 }
 
@@ -140,14 +147,10 @@ Site.prototype.getIntervalChart = function(e) {
     jQuery("#interval-close ul>li.active").removeClass("active");
     jQuery(e).parent('li').addClass("active");
     this.interval = jQuery(e).attr("data-interval");
-    console.log(this.interval);
-    console.log(this.symbol);
     this.GetQuote();
 }
 Site.prototype.getSymbolChart = function(e) {
     this.symbol = jQuery(e).attr("data-id");
-    console.log(this.interval);
-    console.log(this.symbol);
     this.GetQuote(this.symbol);
 }
 
@@ -155,7 +158,6 @@ Site.prototype.LoadChart = function(quote) {
 
     var that = this;
     $.ajax({
-        //		url: "/historydb?symbol=" + that.symbol,
         url: "/indicators?symbol=" + that.symbol + "&interval=" + that.interval,
         method: "GET",
         cache: false
@@ -166,7 +168,6 @@ Site.prototype.LoadChart = function(quote) {
 
         console.log(series = that.chart.series)
         that.LoadStoredSymbols(false);
-        //        console.log(simpleMovingAverageArray50);
     });
 };
 Site.prototype.IndicatorsTendency = function(indicators_recommendation) {
@@ -273,13 +274,6 @@ Site.prototype.RenderIndicators = function(data) {
         rsi_stoch_indicator["recommendation"] = data.rsi_stoch_indicator.recommendation;
         indicators.push(rsi_stoch_indicator);
 
-        //        indicators.push([])
-        //                    <tr>
-        //                      <th scope="row">1</th>
-        //                      <td>Mark</td>
-        //                      <td>Otto</td>
-        //                      <td class="indicator-action">@mdo</td>
-        //                    </tr>
         var indicators_table = '<table class="table table-dark">';
             indicators_table += '<thead class="thead-light">';
             indicators_table += '<tr>';
@@ -309,41 +303,12 @@ Site.prototype.RenderIndicators = function(data) {
         indicators_table += '</tbody>';
         indicators_table += '</table>';
 
-        console.log(indicators_table)
         that.RenderTendencyChart(indicators_tendency["recommendation"][0], indicators_tendency["recommendation"][1]);
         jQuery(".indicators-tendency-up-down .indicators-down span.value").html(indicators_tendency["down"]);
         jQuery(".indicators-tendency-up-down .indicators-neutral span.value").html(indicators_tendency["neutral"]);
         jQuery(".indicators-tendency-up-down .indicators-up span.value").html(indicators_tendency["up"]);
         jQuery("#indicators").html(indicators_table);
         jQuery("#indicators").show();
-
-
-        console.log(indicators)
-
-        //        indicators.push([])
-        //                    <tr>
-        //                      <th scope="row">1</th>
-        //                      <td>Mark</td>
-        //                      <td>Otto</td>
-        //                      <td class="indicator-action">@mdo</td>
-        //                    </tr>
-
-//        for (var i = 0, l = Object.keys(data).length; i < l; i++) {
-//            symbolList += '<tr></tr>';
-//        }
-        //        data[i].sym
-
-//        jQuery("ul.symbolList").html(symbolList);
-
-//        var context = {};
-//
-//        context.shortName = data[0].shortName;
-//        context.symbol = data[0].sym;
-//        that.symbol = data[0].sym;
-
-//        // call the request to load the chart and pass the data context with it.
-//        if (reloadChart)
-//            that.LoadChart(context);
     } else {
         jQuery("#chart_container").html("");
         jQuery(".symbolListDiv").hide("");
@@ -369,7 +334,7 @@ Site.prototype.RenderTendencyChart = function (data, dataSubtitle){
       Highcharts.chart('tendency-container', {
             chart: {
                   type: 'solidgauge',
-                  backgroundColor: '#333',
+                  backgroundColor: '#242424',
                   marginTop: 10
             },
 
@@ -461,6 +426,16 @@ Site.prototype.RenderTendencyChart = function (data, dataSubtitle){
       });
 }
 
+Site.prototype.ColorPointIndicator = function(indicators_tendency) {
+    if(indicators_tendency < 0){
+            return "#d32f2f";
+    } else if(indicators_tendency > 0){
+            return "#2e7d32";
+    } else {
+            return "#616161";
+    }
+}
+
 Site.prototype.RenderChart = function(data, quote) {
     var that = this;
     var priceData = [];
@@ -471,9 +446,18 @@ Site.prototype.RenderChart = function(data, quote) {
     jQuery("h4.currentSymbolName").text(title);
     console.log(data[0]._id.Datetime)
     // Map your data to desired format
-    var closeData = data.map(o => ({x: o._id.Datetime, y: o.price, indicator_down: o.indicators_down, indicator_neutral: o.indicators_neutral, indicator_up: o.indicators_up, indicators_tendency: that.IndicatorsTendency(o.indicators_recommendation)[1] }));
-    console.log(closeData);
+    var closeData = data.map(o => ({x: o._id.Datetime, y: o.price, color: that.ColorPointIndicator(o.indicators_tendency), indicator_down: o.indicators_down, indicator_neutral: o.indicators_neutral, indicator_up: o.indicators_up, indicators_tendency: that.IndicatorsTendency(o.indicators_recommendation)[1] }));
     var volumeData = data.map(o => ([o._id.Datetime, o.volume]));
+
+    var indicatorsDownData = data.map(o => ([o._id.Datetime, o.indicators_down]));
+    var indicatorsNeutralData = data.map(o => ([o._id.Datetime, o.indicators_neutral]));
+    var indicatorsUpData = data.map(o => ([o._id.Datetime, o.indicators_up]));
+    var indicatorsTendencyData = data.map(o => ([o._id.Datetime, o.indicators_tendency]));
+//    var indicatorsTendencyData = data.map(o => ({x: o._id.Datetime, title: that.IndicatorsTendency(o.indicators_recommendation)[1]}));
+
+    var GainData = data.map(o => ([o._id.Datetime, o.gain]));
+    var LossData = data.map(o => ([o._id.Datetime, o.loss]));
+
     //        var series = data.map(o => ({x: data._id.Datetime, data: [{y: data.price}]}));
     //                       json.map(o => ({name: o.name, data: [{y: Number(o.Salary)}]}));
 
@@ -568,6 +552,38 @@ Site.prototype.RenderChart = function(data, quote) {
                 data: volumeData,
                 yAxis: 2
             },
+            {
+//                visible: false,
+                name: 'Indicators Down',
+                data: indicatorsDownData,
+            },
+            {
+//                visible: false,
+                name: 'Indicators Neutral',
+                data: indicatorsNeutralData,
+            },
+            {
+//                visible: false,
+                name: 'Indicators Up',
+                data: indicatorsUpData,
+            },
+            {
+//                visible: false,
+                name: 'Indicators Tendency',
+                data: indicatorsTendencyData,
+            },
+            {
+////                visible: false,
+//                type: 'column',
+                name: 'Gain',
+                data: GainData,
+            },
+            {
+////                visible: false,
+//                type: 'column',
+                name: 'Loss',
+                data: LossData,
+            },
         ],
 
         rangeSelector: {
@@ -615,7 +631,7 @@ Site.prototype.RenderChart = function(data, quote) {
                 }
             ],
             selected: 3,
-            inputEnabled: false
+//            inputEnabled: false
         },
 
         responsive: {
@@ -634,6 +650,9 @@ Site.prototype.RenderChart = function(data, quote) {
     });
 
     jQuery(".symbolListDiv").show();
+    jQuery("#interval-close").show();
+    jQuery("#tendency-container").show();
+    jQuery(".indicators-tendency-up-down").show();
     jQuery(".symbolListDiv .loadingChart").removeClass('d-inline-block');
     jQuery("#navbarToggleExternalContent").collapse('hide');
 };

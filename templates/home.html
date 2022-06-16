@@ -26,7 +26,7 @@
             <main role="main" class="inner">
               <h2 class="cover-heading">Análise Técnica de Ações baseado em Médias e Tendências</h2>
               <div class="input-group mb-3">
-                <input id="symbol" type="text" class="form-control" placeholder="Insira o da ação ETF ou o símbolo do fundo mútuo" aria-label="Ação, ETF ou Fundo Mútuo" aria-describedby="basic-addon2">
+                <input id="symbol" type="text"  oninput="this.value = this.value.toUpperCase()"  class="form-control" placeholder="Insira o da ação ETF ou o símbolo do fundo mútuo" aria-label="Ação, ETF ou Fundo Mútuo" aria-describedby="basic-addon2" required>
                 <div class="input-group-append">
                   <button class="btn btn-outline-secondary" type="button" onclick="site.SubmitForm();">Pesquisar</button>
                 </div>
@@ -51,9 +51,9 @@
                 </nav>
               </div>
               <div id="chart_container"></div>
-              <div id="interval-close" class="p-3">
-                <nav aria-label="Intervalo">
-                  <h6 class="float-right p-2">Intervalo</h6>
+              <div id="interval-close" class="p-3" style="display: none;">
+                <nav aria-label="Período">
+                  <h6 class="float-right p-2">Período</h6>
                   <ul class="pagination float">
                     <li class="page-item">
                       <span class="page-link" data-interval="1m" onclick="site.getIntervalChart(this)">1m</span>
@@ -94,8 +94,8 @@
                   </ul>
                 </nav>
               </div>
-              <div id="tendency-container" style="height: 250px;"></div>
-              <div class="container indicators-tendency-up-down">
+              <div id="tendency-container" style="height: 250px; display:none;"></div>
+              <div class="container indicators-tendency-up-down" style="display: none;">
                 <div class="row">
                   <div class="col-md-4 indicators-down">Tendência de Baixa: <span class="value">-</span></div>
                   <div class="col-md-4 indicators-neutral">Tendência Neutra: <span class="value">-</span></div>
