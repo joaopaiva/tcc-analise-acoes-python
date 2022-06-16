@@ -1,35 +1,35 @@
 from flask import Flask, request, render_template, jsonify
-from flask_cors import CORS,cross_origin
+# from flask_cors import CORS,cross_origin
 import requests as _requests
 from mongoYfinance import *
 
 # instantiate the Flask app.
 app = Flask(__name__)
-CORS(app, support_credentials=True)
+# CORS(app, support_credentials=True)
 yfdb = mongoYfinance("tccanaliseacoes", "oiDHq8LUtoKUkyIA",
                      "cluster0.qxqqc.mongodb.net/myFirstDatabase?retryWrites=true&w=majority")
 
-@cross_origin()
-@app.route("/search")
-def search_ticker():
-    query = request.args.get('q')
-    # Getting data from json
-    url = "https://query2.finance.yahoo.com/v1/finance/search?q={}".format(query)
-    data = _requests.get(
-        url=url,
-        headers= {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
-    )
-    if "Will be right back" in data.text:
-        raise RuntimeError("*** YAHOO! FINANCE IS CURRENTLY DOWN! ***\n"
-                           "Our engineers are working quickly to resolve "
-                           "the issue. Thank you for your patience.")
-    data = data.json()
-
-    # parse news
-    search = data.get("quotes", [])
-    search = jsonify(search)
-    # search.headers.add('Access-Control-Allow-Origin', '*')
-    return search
+# @cross_origin()
+# @app.route("/search")
+# def search_ticker():
+#     query = request.args.get('q')
+#     # Getting data from json
+#     url = "https://query2.finance.yahoo.com/v1/finance/search?q={}".format(query)
+#     data = _requests.get(
+#         url=url,
+#         headers= {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
+#     )
+#     if "Will be right back" in data.text:
+#         raise RuntimeError("*** YAHOO! FINANCE IS CURRENTLY DOWN! ***\n"
+#                            "Our engineers are working quickly to resolve "
+#                            "the issue. Thank you for your patience.")
+#     data = data.json()
+#
+#     # parse news
+#     search = data.get("quotes", [])
+#     search = jsonify(search)
+#     # search.headers.add('Access-Control-Allow-Origin', '*')
+#     return search
 
 @app.route("/indicators")
 def display_indicators_db():
