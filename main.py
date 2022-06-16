@@ -1,12 +1,15 @@
 from flask import Flask, request, render_template, jsonify
+from flask_cors import CORS,cross_origin
 import requests as _requests
 from mongoYfinance import *
 
 # instantiate the Flask app.
 app = Flask(__name__)
+CORS(app, support_credentials=True'')
 yfdb = mongoYfinance("tccanaliseacoes", "oiDHq8LUtoKUkyIA",
                      "cluster0.qxqqc.mongodb.net/myFirstDatabase?retryWrites=true&w=majority")
 
+@cross_origin()
 @app.route("/search")
 def search_ticker():
     query = request.args.get('q')
@@ -25,6 +28,7 @@ def search_ticker():
     # parse news
     search = data.get("quotes", [])
     search = jsonify(search)
+    # search.headers.add('Access-Control-Allow-Origin', '*')
     return search
 
 @app.route("/indicators")

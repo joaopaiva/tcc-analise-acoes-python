@@ -166,7 +166,7 @@ Site.prototype.LoadChart = function(quote) {
         var lastElementData = data[Object.keys(data)[Object.keys(data).length - 1]]
         that.RenderIndicators(lastElementData);
 
-        console.log(series = that.chart.series)
+//        console.log(series = that.chart.series)
         that.LoadStoredSymbols(false);
     });
 };
@@ -291,7 +291,7 @@ Site.prototype.RenderIndicators = function(data) {
         indicators.forEach(function logArrayElements(element, index, array) {
             i_indicator++;
             indicator_row = "";
-            console.log(element["name"]);
+//            console.log(element["name"]);
             indicator_row += '<tr>';
             indicator_row += '<th scope="row">' + i_indicator + '</th>';
             indicator_row += '<th>' + element["name"] + '</th>';
@@ -444,43 +444,19 @@ Site.prototype.RenderChart = function(data, quote) {
     var title = quote.shortName + " (" + quote.symbol + ")";
 
     jQuery("h4.currentSymbolName").text(title);
-    console.log(data[0]._id.Datetime)
+//    console.log(data[0]._id.Datetime)
     // Map your data to desired format
     var closeData = data.map(o => ({x: o._id.Datetime, y: o.price, color: that.ColorPointIndicator(o.indicators_tendency), indicator_down: o.indicators_down, indicator_neutral: o.indicators_neutral, indicator_up: o.indicators_up, indicators_tendency: that.IndicatorsTendency(o.indicators_recommendation)[1] }));
     var volumeData = data.map(o => ([o._id.Datetime, o.volume]));
 
-    var indicatorsDownData = data.map(o => ([o._id.Datetime, o.indicators_down]));
-    var indicatorsNeutralData = data.map(o => ([o._id.Datetime, o.indicators_neutral]));
-    var indicatorsUpData = data.map(o => ([o._id.Datetime, o.indicators_up]));
-    var indicatorsTendencyData = data.map(o => ([o._id.Datetime, o.indicators_tendency]));
+//    var indicatorsDownData = data.map(o => ([o._id.Datetime, o.indicators_down]));
+//    var indicatorsNeutralData = data.map(o => ([o._id.Datetime, o.indicators_neutral]));
+//    var indicatorsUpData = data.map(o => ([o._id.Datetime, o.indicators_up]));
+//    var indicatorsTendencyData = data.map(o => ([o._id.Datetime, o.indicators_tendency]));
 //    var indicatorsTendencyData = data.map(o => ({x: o._id.Datetime, title: that.IndicatorsTendency(o.indicators_recommendation)[1]}));
 
-    var GainData = data.map(o => ([o._id.Datetime, o.gain]));
-    var LossData = data.map(o => ([o._id.Datetime, o.loss]));
-
-    //        var series = data.map(o => ({x: data._id.Datetime, data: [{y: data.price}]}));
-    //                       json.map(o => ({name: o.name, data: [{y: Number(o.Salary)}]}));
-
-    //        console.log(close)
-
-    // Close and Volume data
-    //        for(var i in data.Close){
-    //            var volume = data.Volume[i];
-    //            var close = data.Close[i];
-    //
-    //            var dt = parseInt(i);
-    //
-    //            if(close != null){
-    //                priceData.push([dt, close]);
-    //            }
-    //
-    //            if(volume != null){
-    //                volumeData.push([dt, volume])
-    //            }
-    //
-    //        }
-
-    console.log(volumeData);
+//    var GainData = data.map(o => ([o._id.Datetime, o.gain]));
+//    var LossData = data.map(o => ([o._id.Datetime, o.loss]));
 
     this.chart = Highcharts.stockChart('chart_container', {
         time: {
@@ -552,38 +528,38 @@ Site.prototype.RenderChart = function(data, quote) {
                 data: volumeData,
                 yAxis: 2
             },
-            {
-//                visible: false,
-                name: 'Indicators Down',
-                data: indicatorsDownData,
-            },
-            {
-//                visible: false,
-                name: 'Indicators Neutral',
-                data: indicatorsNeutralData,
-            },
-            {
-//                visible: false,
-                name: 'Indicators Up',
-                data: indicatorsUpData,
-            },
-            {
-//                visible: false,
-                name: 'Indicators Tendency',
-                data: indicatorsTendencyData,
-            },
-            {
+//            {
 ////                visible: false,
-//                type: 'column',
-                name: 'Gain',
-                data: GainData,
-            },
-            {
+//                name: 'Indicators Down',
+//                data: indicatorsDownData,
+//            },
+//            {
 ////                visible: false,
-//                type: 'column',
-                name: 'Loss',
-                data: LossData,
-            },
+//                name: 'Indicators Neutral',
+//                data: indicatorsNeutralData,
+//            },
+//            {
+////                visible: false,
+//                name: 'Indicators Up',
+//                data: indicatorsUpData,
+//            },
+//            {
+////                visible: false,
+//                name: 'Indicators Tendency',
+//                data: indicatorsTendencyData,
+//            },
+//            {
+//////                visible: false,
+////                type: 'column',
+//                name: 'Gain',
+//                data: GainData,
+//            },
+//            {
+//////                visible: false,
+////                type: 'column',
+//                name: 'Loss',
+//                data: LossData,
+//            },
         ],
 
         rangeSelector: {
